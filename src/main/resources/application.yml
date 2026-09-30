@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: reserva-salas-back
+  datasource:
+    url: jdbc:h2:mem:reservasalas;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  mvc:
+    problemdetails:
+      enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  h2:
+    console:
+      enabled: true
+  jpa:
+    show-sql: true
+
+app:
+  cors:
+    allowed-origins: http://localhost:4200
