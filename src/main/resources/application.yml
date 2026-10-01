@@ -13,6 +13,17 @@ spring:
     problemdetails:
       enabled: true
 
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-exception: false
+    include-binding-errors: never
+
+app:
+  # Zona horaria con la que se calculan «hoy» y «mañana» (identificador IANA).
+  timezone: ${APP_TIMEZONE:Europe/Madrid}
+
 ---
 spring:
   config:
