@@ -17,6 +17,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
@@ -42,6 +43,8 @@ import org.springframework.web.server.ResponseStatusException;
 @WebMvcTest(controllers = ErroresSobrescritosWebTest.ControladorDePrueba.class,
         properties = "logging.level.com.reservasalas=INFO")
 @Import({GlobalExceptionHandler.class, ErroresSobrescritosWebTest.ControladorDePrueba.class})
+// Sin filtros de seguridad: aquí solo se prueba la traducción de errores del controlador de prueba.
+@AutoConfigureMockMvc(addFilters = false)
 @ExtendWith(OutputCaptureExtension.class)
 class ErroresSobrescritosWebTest {
 

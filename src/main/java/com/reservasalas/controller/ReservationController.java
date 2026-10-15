@@ -2,12 +2,14 @@ package com.reservasalas.controller;
 
 import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.ReservationDto;
+import com.reservasalas.security.AuthenticatedUser;
 import com.reservasalas.service.ReservationService;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -63,14 +65,16 @@ public class ReservationController {
     }
 
     /**
-     * Crea una reserva.
+     * Crea una reserva a nombre del usuario de la sesión.
      *
-     * @param request datos de la reserva
+     * @param request     datos de la reserva
+     * @param currentUser usuario de la sesión
      * @return la reserva creada, con la cabecera {@code Location} apuntando a ella
      */
     @PostMapping
-    public ResponseEntity<ReservationDto> create(@Valid @RequestBody CreateReservationRequest request) {
-        ReservationDto created = reservationService.create(request);
+    public ResponseEntity<ReservationDto> create(@Valid @RequestBody CreateReservationRequest request,
+                                                 @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        ReservationDto created = reservationService.create(request, currentUser);
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(created.id())
@@ -79,14 +83,17 @@ public class ReservationController {
     }
 
     /**
-     * Cancela una reserva; su franja queda libre.
+     * Cancela una reserva; su franja queda libre. Un usuario solo cancela las suyas; un
+     * administrador, cualquiera.
      *
-     * @param id identificador de la reserva
+     * @param id          identificador de la reserva
+     * @param currentUser usuario de la sesión
      * @return respuesta vacía {@code 204}
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> cancel(@PathVariable Long id) {
-        reservationService.cancel(id);
+    public ResponseEntity<Void> cancel(@PathVariable Long id,
+                                       @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        reservationService.cancel(id, currentUser);
         return ResponseEntity.noContent().build();
     }
 }

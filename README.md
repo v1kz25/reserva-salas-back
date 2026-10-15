@@ -5,19 +5,24 @@ API REST de la aplicación de reserva de salas. El contrato de la API está en [
 ## Stack
 
 - Java 21
-- Spring Boot 4 (Web MVC, Data JPA, Validation)
+- Spring Boot 4 (Web MVC, Data JPA, Validation, Security)
 - H2 en memoria
 - Maven (wrapper incluido)
 
 ## Arranque
 
+Sin un administrador no se puede iniciar sesión, así que define al menos `ADMIN_EMAIL` y `ADMIN_PASSWORD` (en la shell o copiando `.env.example` a `.env`, que no se sube al repositorio):
+
 ```bash
+cp .env.example .env       # y rellena ADMIN_PASSWORD (y, si quieres, DEMO_EMAIL y DEMO_PASSWORD)
+set -a; source .env; set +a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 La API queda en `http://localhost:8080/api`. Con el perfil `dev`:
 
-- Se permite CORS desde `http://localhost:4200` (el frontend).
+- Se permite CORS con credenciales desde `http://localhost:4200` (el frontend).
+- Si están definidas `DEMO_EMAIL` y `DEMO_PASSWORD`, se crea además un usuario de prueba con rol `USER`.
 - La consola de H2 está en `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:reservasalas`, usuario `sa`, sin contraseña).
 
 ## Configuración
@@ -27,6 +32,38 @@ Variables de entorno (hay un ejemplo en [`.env.example`](.env.example)):
 | Variable | Por defecto | Descripción |
 |---|---|---|
 | `APP_TIMEZONE` | `Europe/Madrid` | Zona horaria (identificador IANA) con la que se calculan «hoy» y «mañana» para validar las fechas de las reservas. Si no es válida, la aplicación no arranca. |
+| `APP_COOKIE_SECURE` | `false` | Marca las cookies `JSESSIONID` y `XSRF-TOKEN` como `Secure` (solo HTTPS). Ponlo a `true` en producción. |
+| `ADMIN_EMAIL` | — | Email del administrador inicial. |
+| `ADMIN_PASSWORD` | — | Contraseña del administrador inicial (máximo 72 bytes). Si falta, no se crea y se avisa en el log. |
+| `ADMIN_NOMBRE` | `Administrador` | Nombre del administrador inicial. |
+| `DEMO_EMAIL`, `DEMO_PASSWORD` | — | Usuario de prueba con rol `USER`; solo con el perfil `dev`. |
+| `DEMO_NOMBRE` | `Usuario de prueba` | Nombre del usuario de prueba. |
+
+Las cuentas iniciales solo se crean si no existe ya un usuario con ese email; si existe, no se modifica. La base de datos es en memoria, así que se crean en cada arranque.
+
+## Autenticación
+
+La API usa sesión HTTP en cookie (`JSESSIONID`, `HttpOnly`, `SameSite=Strict`) y protección CSRF con la cookie `XSRF-TOKEN`, que el cliente repite en la cabecera `X-XSRF-TOKEN` en cada `POST`, `PUT` y `DELETE` (incluido el login). Todo `/api/**` exige sesión salvo `GET /api/auth/csrf` y `POST /api/auth/login`.
+
+Ejemplo con `curl` y un fichero de cookies:
+
+```bash
+# 1. Obtener la cookie XSRF-TOKEN (no crea sesión)
+curl -s -c cookies.txt http://localhost:8080/api/auth/csrf
+XSRF=$(awk '$6 == "XSRF-TOKEN" {print $7}' cookies.txt)
+
+# 2. Iniciar sesión (cambia el token CSRF: hay que volver a leerlo)
+curl -s -b cookies.txt -c cookies.txt -H "X-XSRF-TOKEN: $XSRF" -H 'Content-Type: application/json' \
+     -d '{"email":"admin@example.com","password":"<contraseña>"}' http://localhost:8080/api/auth/login
+XSRF=$(awk '$6 == "XSRF-TOKEN" {print $7}' cookies.txt)
+
+# 3. Peticiones con la sesión
+curl -s -b cookies.txt http://localhost:8080/api/auth/me
+curl -s -b cookies.txt -c cookies.txt -H "X-XSRF-TOKEN: $XSRF" -X DELETE http://localhost:8080/api/reservas/1
+
+# 4. Cerrar sesión
+curl -s -b cookies.txt -c cookies.txt -H "X-XSRF-TOKEN: $XSRF" -X POST http://localhost:8080/api/auth/logout
+```
 
 ## Compilar y probar
 

@@ -3,6 +3,11 @@ package com.reservasalas.repository;
 import com.reservasalas.entity.Reservation;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -14,6 +19,28 @@ import org.springframework.data.repository.query.Param;
  */
 public interface ReservationRepository extends JpaRepository<Reservation, Long>,
         JpaSpecificationExecutor<Reservation> {
+
+    /**
+     * Busca las reservas que cumplen el filtro, cargando a la vez su usuario para poder mostrar el
+     * responsable sin una consulta por reserva.
+     *
+     * @param spec filtro de búsqueda
+     * @param sort orden del resultado
+     * @return las reservas encontradas, vacía si no hay ninguna
+     */
+    @Override
+    @EntityGraph(attributePaths = "user")
+    List<Reservation> findAll(Specification<Reservation> spec, Sort sort);
+
+    /**
+     * Busca una reserva por su identificador, cargando a la vez su usuario.
+     *
+     * @param id identificador de la reserva
+     * @return la reserva, si existe
+     */
+    @Override
+    @EntityGraph(attributePaths = "user")
+    Optional<Reservation> findById(Long id);
 
     /**
      * Comprueba si hay alguna reserva de la sala ese día que se solape con la franja indicada.

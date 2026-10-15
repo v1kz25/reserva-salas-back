@@ -20,6 +20,8 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.method.MethodValidationException;
 import org.springframework.validation.method.ParameterErrors;
@@ -71,6 +73,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final String INVALID_FORMAT_MESSAGE = "tiene un formato no válido";
     private static final String INVALID_VALUE_MESSAGE = "no es válido";
     private static final String UNKNOWN_FIELD = "desconocido";
+    private static final String UNAUTHENTICATED_TITLE = "No autenticado";
+    private static final String UNAUTHENTICATED_DETAIL = "Debes iniciar sesión para acceder a este recurso";
+    private static final String FORBIDDEN_TITLE = "Acceso denegado";
+    private static final String FORBIDDEN_DETAIL = "No tienes permiso para realizar esta operación";
 
     /**
      * Sala no encontrada.
@@ -128,6 +134,50 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 ex.getField() + " " + ex.getMessage(), request.getRequestURI());
         problem.setProperty(ERRORS_PROPERTY, List.of(new FieldErrorDto(ex.getField(), ex.getMessage())));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
+    }
+
+    /**
+     * Login con credenciales no válidas. El mensaje es el mismo si el email no existe o si la
+     * contraseña es incorrecta.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 401}
+     */
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ProblemDetail> handleInvalidCredentials(InvalidCredentialsException ex,
+                                                                  HttpServletRequest request) {
+        LOG.warn("Inicio de sesión con credenciales no válidas");
+        return build(HttpStatus.UNAUTHORIZED, "Credenciales no válidas", ex.getMessage(), request);
+    }
+
+    /**
+     * Petición sin sesión (o con la sesión caducada) a un recurso que la exige. Llega desde el filtro
+     * de seguridad a través de su punto de entrada.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 401} genérica
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ProblemDetail> handleUnauthenticated(AuthenticationException ex,
+                                                               HttpServletRequest request) {
+        LOG.debug("Petición sin sesión válida ({})", ex.getClass().getSimpleName());
+        return build(HttpStatus.UNAUTHORIZED, UNAUTHENTICATED_TITLE, UNAUTHENTICATED_DETAIL, request);
+    }
+
+    /**
+     * Operación sin permiso: rol insuficiente, reserva de otro usuario o token CSRF ausente o no
+     * válido. No se distingue el motivo en la respuesta.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 403} genérica
+     */
+    @ExceptionHandler({AccessDeniedException.class, ForbiddenOperationException.class})
+    public ResponseEntity<ProblemDetail> handleAccessDenied(RuntimeException ex, HttpServletRequest request) {
+        LOG.warn("Acceso denegado ({})", ex.getClass().getSimpleName());
+        return build(HttpStatus.FORBIDDEN, FORBIDDEN_TITLE, FORBIDDEN_DETAIL, request);
     }
 
     /**

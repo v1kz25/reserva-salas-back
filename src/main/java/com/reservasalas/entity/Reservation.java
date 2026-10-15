@@ -40,8 +40,9 @@ public class Reservation {
     @Column(name = "END_TIME", nullable = false)
     private LocalTime endTime;
 
-    @Column(name = "RESPONSIBLE", nullable = false, length = 100)
-    private String responsible;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "USER_ID", nullable = false, foreignKey = @ForeignKey(name = "FK_RESERVATIONS_USER"))
+    private User user;
 
     @Column(name = "REASON", nullable = false, length = 255)
     private String reason;
@@ -57,16 +58,16 @@ public class Reservation {
      * @param date        día de la reserva
      * @param startTime   hora de inicio
      * @param endTime     hora de fin, posterior a la de inicio
-     * @param responsible persona responsable de la reserva
+     * @param user        usuario que hace la reserva y queda como responsable
      * @param reason      motivo de la reserva
      */
     public Reservation(Room room, LocalDate date, LocalTime startTime, LocalTime endTime,
-                       String responsible, String reason) {
+                       User user, String reason) {
         this.room = room;
         this.date = date;
         this.startTime = startTime;
         this.endTime = endTime;
-        this.responsible = responsible;
+        this.user = user;
         this.reason = reason;
     }
 
@@ -116,12 +117,13 @@ public class Reservation {
     }
 
     /**
-     * Persona responsable de la reserva.
+     * Usuario que hizo la reserva y es su responsable. Se carga de forma perezosa; su id está
+     * disponible sin consultar la base de datos.
      *
-     * @return el responsable
+     * @return el usuario
      */
-    public String getResponsible() {
-        return responsible;
+    public User getUser() {
+        return user;
     }
 
     /**

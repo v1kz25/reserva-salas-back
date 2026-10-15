@@ -13,24 +13,32 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.reservasalas.config.SecurityConfig;
 import com.reservasalas.controller.ReservationController;
 import com.reservasalas.controller.RoomController;
 import com.reservasalas.service.ReservationService;
 import com.reservasalas.service.RoomService;
+import com.reservasalas.support.TestUsers;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.context.WebApplicationContext;
 
 @WebMvcTest({RoomController.class, ReservationController.class})
+@Import(SecurityConfig.class)
 class GlobalExceptionHandlerTest {
 
     @Autowired
+    private WebApplicationContext context;
+
     private MockMvc mvc;
 
     @MockitoBean
@@ -38,6 +46,12 @@ class GlobalExceptionHandlerTest {
 
     @MockitoBean
     private ReservationService reservationService;
+
+    @BeforeEach
+    void setUp() {
+        // Administrador: los métodos de escritura sobre salas exigen ese rol antes de llegar al 405.
+        mvc = TestUsers.mockMvcAs(context, TestUsers.ADMIN);
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/no-existe", "/api/reservas/7/otra", "/api/salas/1/otra"})

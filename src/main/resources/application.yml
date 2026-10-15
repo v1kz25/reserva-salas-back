@@ -14,6 +14,13 @@ spring:
       enabled: true
 
 server:
+  servlet:
+    session:
+      cookie:
+        # Cookie de sesión JSESSIONID: inaccesible desde JavaScript y solo en peticiones del mismo sitio.
+        http-only: true
+        same-site: strict
+        secure: ${APP_COOKIE_SECURE:false}
   error:
     include-message: never
     include-stacktrace: never
@@ -23,6 +30,19 @@ server:
 app:
   # Zona horaria con la que se calculan «hoy» y «mañana» (identificador IANA).
   timezone: ${APP_TIMEZONE:Europe/Madrid}
+  # Marca las cookies JSESSIONID y XSRF-TOKEN como Secure (solo HTTPS). Activar en producción.
+  cookie-secure: ${APP_COOKIE_SECURE:false}
+  # Cuentas que se crean al arrancar si no existen. Los valores llegan siempre por variables de entorno.
+  initial-users:
+    admin:
+      email: ${ADMIN_EMAIL:}
+      password: ${ADMIN_PASSWORD:}
+      name: ${ADMIN_NOMBRE:}
+    # Solo se usa con el perfil dev.
+    demo:
+      email: ${DEMO_EMAIL:}
+      password: ${DEMO_PASSWORD:}
+      name: ${DEMO_NOMBRE:}
 
 ---
 spring:

@@ -9,8 +9,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.reservasalas.entity.Role;
 import com.reservasalas.entity.Room;
+import com.reservasalas.entity.User;
 import com.reservasalas.repository.RoomRepository;
+import com.reservasalas.repository.UserRepository;
+import com.reservasalas.security.AuthenticatedUser;
+import com.reservasalas.support.TestUsers;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -27,7 +32,6 @@ import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
@@ -51,20 +55,24 @@ class ReservaFlujoIntegrationTest {
     private WebApplicationContext context;
     @Autowired
     private RoomRepository rooms;
+    @Autowired
+    private UserRepository users;
 
     private MockMvc mvc;
     private Long roomId;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        User user = users.save(new User("ana-" + java.util.UUID.randomUUID() + "@example.com", "Ana",
+                "$2a$10$abcdefghijklmnopqrstuuJ1lRkXH8aY0Y8cU5qOjK8m7cOQ1gYfS", Role.USER));
+        mvc = TestUsers.mockMvcAs(context, AuthenticatedUser.from(user));
         roomId = rooms.save(new Room("Sala flujo " + java.util.UUID.randomUUID(), 8, 1)).getId();
     }
 
     private ResultActions crear(String start, String end) throws Exception {
         String body = """
                 {"salaId":%d,"fecha":"2030-05-10","horaInicio":"%s","horaFin":"%s",
-                 "responsable":"Ana","motivo":"Reunión"}""".formatted(roomId, start, end);
+                 "motivo":"Reunión"}""".formatted(roomId, start, end);
         return mvc.perform(post("/api/reservas").contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
@@ -95,7 +103,7 @@ class ReservaFlujoIntegrationTest {
     private ResultActions crearEnFecha(String date) throws Exception {
         String body = """
                 {"salaId":%d,"fecha":"%s","horaInicio":"10:00","horaFin":"11:00",
-                 "responsable":"Ana","motivo":"Reunión"}""".formatted(roomId, date);
+                 "motivo":"Reunión"}""".formatted(roomId, date);
         return mvc.perform(post("/api/reservas").contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
