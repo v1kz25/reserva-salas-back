@@ -78,4 +78,34 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long>,
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM Reservation r WHERE r.id = :id")
     int deleteByIdReturningCount(@Param("id") Long id);
+
+    /**
+     * Comprueba si la sala tiene alguna reserva el día indicado o posterior.
+     *
+     * @param roomId identificador de la sala
+     * @param from   primer día que cuenta
+     * @return {@code true} si existe al menos una reserva desde ese día
+     */
+    @Query("""
+            SELECT COUNT(r) > 0 FROM Reservation r
+            WHERE r.room.id = :roomId
+              AND r.date >= :from
+            """)
+    boolean existsByRoomFrom(@Param("roomId") Long roomId, @Param("from") LocalDate from);
+
+    /**
+     * Borra todas las reservas de una sala con una única sentencia.
+     *
+     * <p>Cuando existan las invitaciones a reservas (#7), habrá que borrar antes las invitaciones
+     * de estas reservas.
+     *
+     * <p>Ojo: {@code clearAutomatically = true} vacía todo el contexto de persistencia; las entidades
+     * cargadas antes quedan desvinculadas.
+     *
+     * @param roomId identificador de la sala
+     * @return número de reservas borradas
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM Reservation r WHERE r.room.id = :roomId")
+    int deleteByRoomId(@Param("roomId") Long roomId);
 }

@@ -64,10 +64,10 @@ class ErroresIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/no-existe", "/api/salas/1"})
+    @ValueSource(strings = {"/api/no-existe", "/api/reservas/7/otra"})
     void postEnRutaSinControladorDa404Generico(String path) throws Exception {
-        // Estas rutas no tienen controlador (ni /api/salas/{id}), así que el manejador de recursos
-        // estáticos responde 404 (no 405) a un POST.
+        // Estas rutas no tienen controlador, así que el manejador de recursos estáticos responde
+        // 404 (no 405) a un POST.
         mvc.perform(post(path))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
