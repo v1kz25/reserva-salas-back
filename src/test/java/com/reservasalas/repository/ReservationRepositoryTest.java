@@ -6,6 +6,7 @@ import com.reservasalas.entity.Reservation;
 import com.reservasalas.entity.Role;
 import com.reservasalas.entity.Room;
 import com.reservasalas.entity.User;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.HashMap;
@@ -47,7 +48,7 @@ class ReservationRepositoryTest {
     /** Usuario con ese nombre, que hace de responsable de las reservas. */
     private User user(String name) {
         return usersByName.computeIfAbsent(name, n -> users.save(
-                new User(n.toLowerCase(Locale.ROOT) + "@example.com", n, "hash", Role.USER)));
+                new User(n.toLowerCase(Locale.ROOT) + "@example.com", n, "hash", Role.USER, Instant.EPOCH)));
     }
 
     private boolean overlaps(Room room, LocalDate date, String start, String end) {

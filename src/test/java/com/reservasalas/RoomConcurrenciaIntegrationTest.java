@@ -77,7 +77,7 @@ class RoomConcurrenciaIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        admin = TestUsers.mockMvcAs(context, TestUsers.ADMIN);
+        admin = TestUsers.mockMvcAs(context, TestUsers.persisted(users, Role.ADMIN));
         pool = Executors.newFixedThreadPool(2);
     }
 
@@ -140,7 +140,7 @@ class RoomConcurrenciaIntegrationTest {
 
     @Test
     void borradoDeSalaYAltaDeReservaSimultaneosNuncaDejanReservaHuerfana() throws Exception {
-        User owner = users.save(new User("c-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER));
+        User owner = users.save(new User("c-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER, Instant.EPOCH));
         MockMvc ana = TestUsers.mockMvcAs(context, com.reservasalas.security.AuthenticatedUser.from(owner));
         for (int i = 0; i < 10; i++) {
             Room room = rooms.save(new Room("Carrera " + UUID.randomUUID(), 4, 1));

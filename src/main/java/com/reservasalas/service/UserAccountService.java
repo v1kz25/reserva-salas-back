@@ -4,6 +4,8 @@ import com.reservasalas.entity.Role;
 import com.reservasalas.entity.User;
 import com.reservasalas.repository.UserRepository;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.temporal.ChronoUnit;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,20 +21,24 @@ public class UserAccountService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final Clock clock;
 
     /**
      * Crea el servicio.
      *
      * @param userRepository  repositorio de usuarios
      * @param passwordEncoder codificador de contraseñas
+     * @param clock           reloj con el que se fecha el alta
      */
-    public UserAccountService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserAccountService(UserRepository userRepository, PasswordEncoder passwordEncoder, Clock clock) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.clock = clock;
     }
 
     /**
-     * Crea un usuario si no existe ninguno con ese email; si ya existe, no lo modifica.
+     * Crea un usuario activo si no existe ninguno con ese email; si ya existe, no lo modifica. La
+     * fecha de creación es el instante actual (para las cuentas iniciales, el del arranque).
      *
      * @param email       email del usuario; se normaliza
      * @param rawPassword contraseña en claro, de 72 bytes como máximo en UTF-8
@@ -51,7 +57,8 @@ public class UserAccountService {
         if (userRepository.existsByEmail(normalized)) {
             return false;
         }
-        userRepository.save(new User(normalized, name, passwordEncoder.encode(rawPassword), role));
+        userRepository.save(new User(normalized, name, passwordEncoder.encode(rawPassword), role,
+                clock.instant().truncatedTo(ChronoUnit.SECONDS)));
         return true;
     }
 }

@@ -12,6 +12,7 @@ import com.reservasalas.security.AuthenticatedUser;
 import com.reservasalas.support.TestHttpClient;
 import com.reservasalas.support.TestHttpClient.Reply;
 import jakarta.servlet.http.HttpSession;
+import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -94,7 +95,7 @@ class SecurityHardeningTest {
         @Test
         void lasCookiesDeSesionYCsrfLlevanSecure() {
             String email = "sec-" + UUID.randomUUID() + "@example.com";
-            users.save(new User(email, "Sec", encoder.encode("clave-de-prueba-1"), Role.USER));
+            users.save(new User(email, "Sec", encoder.encode("clave-de-prueba-1"), Role.USER, Instant.EPOCH));
             TestHttpClient client = new TestHttpClient(port);
 
             Reply csrf = client.get("/api/auth/csrf");
@@ -121,7 +122,7 @@ class SecurityHardeningTest {
         @Test
         void elPrincipalGuardadoEnLaSesionNoConservaElHash() throws Exception {
             String email = "ctx-" + UUID.randomUUID() + "@example.com";
-            users.save(new User(email, "Ctx", encoder.encode("clave-de-prueba-1"), Role.USER));
+            users.save(new User(email, "Ctx", encoder.encode("clave-de-prueba-1"), Role.USER, Instant.EPOCH));
             MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
 
             MvcResult result = mvc.perform(post("/api/auth/login").with(csrf())
@@ -141,7 +142,7 @@ class SecurityHardeningTest {
 
         @Test
         void eraseCredentialsBorraElHash() {
-            AuthenticatedUser user = new AuthenticatedUser(1L, "a@example.com", "A", Role.USER, "$2a$10$hash");
+            AuthenticatedUser user = new AuthenticatedUser(1L, "a@example.com", "A", Role.USER, 0, "$2a$10$hash");
 
             user.eraseCredentials();
 

@@ -13,31 +13,39 @@ import org.springframework.security.core.userdetails.UserDetails;
 /**
  * Usuario autenticado que se guarda en la sesión. Tras el login, Spring Security borra el hash de
  * la contraseña ({@link #eraseCredentials()}), de modo que la sesión no lo conserva.
+ *
+ * <p>Los datos son los del momento del login. Guarda también la versión de sesión del usuario: si
+ * después cambian su rol, su estado o su contraseña, la versión deja de coincidir y
+ * {@link SessionValidationFilter} cierra la sesión.
  */
 public final class AuthenticatedUser implements UserDetails, CredentialsContainer {
 
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
     private final Long id;
     private final String email;
     private final String name;
     private final Role role;
+    private final long sessionVersion;
     private String password;
 
     /**
      * Crea el usuario autenticado.
      *
-     * @param id       identificador del usuario
-     * @param email    email normalizado
-     * @param name     nombre visible
-     * @param role     rol del usuario
-     * @param password hash de la contraseña, o {@code null} si ya se ha borrado
+     * @param id             identificador del usuario
+     * @param email          email normalizado
+     * @param name           nombre visible
+     * @param role           rol del usuario
+     * @param sessionVersion versión de sesión del usuario en el momento del login
+     * @param password       hash de la contraseña, o {@code null} si ya se ha borrado
      */
-    public AuthenticatedUser(Long id, String email, String name, Role role, String password) {
+    public AuthenticatedUser(Long id, String email, String name, Role role, long sessionVersion,
+                             String password) {
         this.id = id;
         this.email = email;
         this.name = name;
         this.role = role;
+        this.sessionVersion = sessionVersion;
         this.password = password;
     }
 
@@ -50,7 +58,7 @@ public final class AuthenticatedUser implements UserDetails, CredentialsContaine
      */
     public static AuthenticatedUser from(User user) {
         return new AuthenticatedUser(user.getId(), user.getEmail(), user.getName(), user.getRole(),
-                user.getPasswordHash());
+                user.getSessionVersion(), user.getPasswordHash());
     }
 
     /**
@@ -87,6 +95,15 @@ public final class AuthenticatedUser implements UserDetails, CredentialsContaine
      */
     public Role getRole() {
         return role;
+    }
+
+    /**
+     * Versión de sesión del usuario en el momento del login.
+     *
+     * @return la versión de sesión
+     */
+    public long getSessionVersion() {
+        return sessionVersion;
     }
 
     /**

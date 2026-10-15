@@ -13,6 +13,7 @@ import com.reservasalas.repository.RoomRepository;
 import com.reservasalas.repository.UserRepository;
 import com.reservasalas.support.TestHttpClient;
 import com.reservasalas.support.TestHttpClient.Reply;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
@@ -62,10 +63,10 @@ class AuthIntegrationTest {
     @BeforeEach
     void setUp() {
         String sufijo = UUID.randomUUID().toString().substring(0, 8);
-        ana = users.save(new User("ana-" + sufijo + "@example.com", "Ana", encoder.encode(PASSWORD), Role.USER));
-        bea = users.save(new User("bea-" + sufijo + "@example.com", "Bea", encoder.encode(PASSWORD), Role.USER));
+        ana = users.save(new User("ana-" + sufijo + "@example.com", "Ana", encoder.encode(PASSWORD), Role.USER, Instant.EPOCH));
+        bea = users.save(new User("bea-" + sufijo + "@example.com", "Bea", encoder.encode(PASSWORD), Role.USER, Instant.EPOCH));
         admin = users.save(new User("admin-" + sufijo + "@example.com", "Admin", encoder.encode(PASSWORD),
-                Role.ADMIN));
+                Role.ADMIN, Instant.EPOCH));
         room = rooms.save(new Room("Sala " + sufijo, 10, 1));
     }
 

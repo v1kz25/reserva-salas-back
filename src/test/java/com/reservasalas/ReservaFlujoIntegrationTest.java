@@ -64,7 +64,7 @@ class ReservaFlujoIntegrationTest {
     @BeforeEach
     void setUp() {
         User user = users.save(new User("ana-" + java.util.UUID.randomUUID() + "@example.com", "Ana",
-                "$2a$10$abcdefghijklmnopqrstuuJ1lRkXH8aY0Y8cU5qOjK8m7cOQ1gYfS", Role.USER));
+                "$2a$10$abcdefghijklmnopqrstuuJ1lRkXH8aY0Y8cU5qOjK8m7cOQ1gYfS", Role.USER, Instant.EPOCH));
         mvc = TestUsers.mockMvcAs(context, AuthenticatedUser.from(user));
         roomId = rooms.save(new Room("Sala flujo " + java.util.UUID.randomUUID(), 8, 1)).getId();
     }
