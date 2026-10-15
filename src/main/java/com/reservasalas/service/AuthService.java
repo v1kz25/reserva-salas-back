@@ -1,8 +1,6 @@
 package com.reservasalas.service;
 
 import com.reservasalas.exception.InvalidCredentialsException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -14,8 +12,6 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class AuthService {
-
-    private static final Logger LOG = LoggerFactory.getLogger(AuthService.class);
 
     private final AuthenticationManager authenticationManager;
 
@@ -42,7 +38,6 @@ public class AuthService {
             return authenticationManager.authenticate(
                     UsernamePasswordAuthenticationToken.unauthenticated(email, password));
         } catch (AuthenticationException e) {
-            LOG.info("Inicio de sesión rechazado: credenciales no válidas");
             throw new InvalidCredentialsException();
         }
     }

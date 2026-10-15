@@ -27,8 +27,9 @@ public class AuthenticationConfig {
     }
 
     /**
-     * Gestor de autenticación que usa el login. Si el email no existe, igualmente compara la
-     * contraseña con un hash ficticio para no revelar por el tiempo de respuesta qué emails existen.
+     * Gestor de autenticación que usa el login, basado en {@link DaoAuthenticationProvider}. Ese
+     * proveedor ya compara la contraseña con un hash ficticio cuando el email no existe, de modo que
+     * el tiempo de respuesta no revela qué emails están registrados.
      *
      * @param userDetailsService servicio que carga los usuarios por email
      * @param passwordEncoder    codificador de contraseñas

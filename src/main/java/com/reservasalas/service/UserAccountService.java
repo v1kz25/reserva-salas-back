@@ -3,6 +3,7 @@ package com.reservasalas.service;
 import com.reservasalas.entity.Role;
 import com.reservasalas.entity.User;
 import com.reservasalas.repository.UserRepository;
+import java.nio.charset.StandardCharsets;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class UserAccountService {
+
+    /** Límite de BCrypt: las contraseñas más largas no se pueden codificar. */
+    public static final int MAX_PASSWORD_BYTES = 72;
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -35,9 +39,14 @@ public class UserAccountService {
      * @param name        nombre visible
      * @param role        rol del usuario
      * @return {@code true} si se ha creado, {@code false} si ya existía
+     * @throws IllegalArgumentException si la contraseña supera {@value #MAX_PASSWORD_BYTES} bytes
      */
     @Transactional
     public boolean createIfAbsent(String email, String rawPassword, String name, Role role) {
+        if (rawPassword.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            throw new IllegalArgumentException(
+                    "La contraseña no puede superar los " + MAX_PASSWORD_BYTES + " bytes en UTF-8");
+        }
         String normalized = User.normalizeEmail(email);
         if (userRepository.existsByEmail(normalized)) {
             return false;

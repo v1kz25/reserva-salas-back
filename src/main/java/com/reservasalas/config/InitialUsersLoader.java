@@ -25,8 +25,6 @@ public class InitialUsersLoader implements ApplicationRunner {
     private static final String DEFAULT_ADMIN_NAME = "Administrador";
     private static final String DEFAULT_DEMO_NAME = "Usuario de prueba";
     private static final String DEV_PROFILE = "dev";
-    /** Límite de BCrypt: las contraseñas más largas no se pueden codificar. */
-    private static final int MAX_PASSWORD_BYTES = 72;
 
     private final InitialUsersProperties properties;
     private final UserAccountService userAccountService;
@@ -87,8 +85,9 @@ public class InitialUsersLoader implements ApplicationRunner {
      */
     private void create(Account account, Role role, String defaultName, String label) {
         String name = isBlank(account.name()) ? defaultName : account.name().strip();
-        if (account.password().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
-            LOG.warn("No se ha creado el {}: la contraseña supera los {} bytes", label, MAX_PASSWORD_BYTES);
+        if (account.password().getBytes(StandardCharsets.UTF_8).length > UserAccountService.MAX_PASSWORD_BYTES) {
+            LOG.warn("No se ha creado el {}: la contraseña supera los {} bytes", label,
+                    UserAccountService.MAX_PASSWORD_BYTES);
             return;
         }
         if (User.normalizeEmail(account.email()).length() > User.MAX_EMAIL_LENGTH
