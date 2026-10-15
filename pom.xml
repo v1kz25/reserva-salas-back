@@ -79,4 +79,48 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<!--
+			Auditoría de dependencias con OWASP dependency-check. No se ejecuta en el build
+			normal: ./mvnw -P dependency-check verify. Es informativa (nunca rompe el build).
+			La clave de la API de NVD es opcional: -DnvdApiKeyEnvironmentVariable=NVD_API_KEY.
+		-->
+		<profile>
+			<id>dependency-check</id>
+			<properties>
+				<dependencyCheck.dataDirectory>${user.home}/.dependency-check/data</dependencyCheck.dataDirectory>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.owasp</groupId>
+						<artifactId>dependency-check-maven</artifactId>
+						<version>13.0.0</version>
+						<configuration>
+							<dataDirectory>${dependencyCheck.dataDirectory}</dataDirectory>
+							<formats>
+								<format>HTML</format>
+								<format>JSON</format>
+							</formats>
+							<failBuildOnCVSS>11</failBuildOnCVSS>
+							<failOnError>false</failOnError>
+							<ossIndexAnalyzerEnabled>false</ossIndexAnalyzerEnabled>
+							<nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>
+							<nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
+							<retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>
+							<assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+						</configuration>
+						<executions>
+							<execution>
+								<goals>
+									<goal>check</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
 </project>
