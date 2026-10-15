@@ -9,21 +9,40 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.ConversionNotSupportedException;
 import org.springframework.beans.TypeMismatchException;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.method.MethodValidationException;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
+import org.springframework.web.ErrorResponseException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingPathVariableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -33,9 +52,11 @@ import tools.jackson.core.JacksonException;
  * Traduce las excepciones de la aplicación a respuestas {@link ProblemDetail} (RFC 9457).
  *
  * <p>Los errores de validación ({@code 400}) incluyen la propiedad {@code errores} con la lista de
- * campos incorrectos, usando los nombres de campo de la API. Los errores de infraestructura
- * ({@code 404} por ruta inexistente, {@code 405} y {@code 415}) devuelven un detalle genérico que no
- * expone la ruta, el método ni el tipo de contenido recibidos.
+ * campos incorrectos, usando los nombres de campo de la API. El resto de errores que gestiona
+ * {@link ResponseEntityExceptionHandler} (ruta inexistente, método o tipo de contenido no soportados,
+ * formato no aceptable, cuerpo demasiado grande, tiempo agotado...) devuelven un título y un detalle
+ * genéricos en español, sin nombres de clases, rutas internas ni valores recibidos. El log tampoco
+ * registra la ruta, el método, las cabeceras ni el cuerpo de la petición.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
@@ -46,8 +67,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final String VALIDATION_DETAIL = "La petición contiene datos no válidos";
     private static final Pattern NON_FIELD_CHARS = Pattern.compile("[^A-Za-z0-9_]");
     private static final int MAX_LOGGED_FIELD_LENGTH = 64;
-    private static final String NOT_FOUND_TITLE = "No encontrado";
-    private static final String NOT_FOUND_DETAIL = "El recurso solicitado no existe";
+    private static final String REQUIRED_MESSAGE = "es obligatorio";
+    private static final String INVALID_FORMAT_MESSAGE = "tiene un formato no válido";
+    private static final String INVALID_VALUE_MESSAGE = "no es válido";
+    private static final String UNKNOWN_FIELD = "desconocido";
 
     /**
      * Sala no encontrada.
@@ -117,9 +140,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ProblemDetail> handleUnexpected(Exception ex, HttpServletRequest request) {
-        LOG.error("Error inesperado en {} {}", request.getMethod(), request.getRequestURI(), ex);
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno",
-                "Se ha producido un error inesperado", request);
+        logError("Error inesperado", ex);
+        GenericError error = GenericError.of(HttpStatus.INTERNAL_SERVER_ERROR);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, error.title(), error.detail(), request);
     }
 
     @Override
@@ -128,7 +151,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                     HttpStatusCode status,
                                                                     WebRequest request) {
         LOG.debug("Petición a una ruta inexistente");
-        return notFoundResponse(headers, request);
+        return genericResponse(ex, HttpStatus.NOT_FOUND, headers, request);
     }
 
     @Override
@@ -137,7 +160,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                    HttpStatusCode status,
                                                                    WebRequest request) {
         LOG.debug("Petición sin controlador asociado");
-        return notFoundResponse(headers, request);
+        return genericResponse(ex, HttpStatus.NOT_FOUND, headers, request);
     }
 
     @Override
@@ -146,9 +169,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                          HttpStatusCode status,
                                                                          WebRequest request) {
         LOG.warn("Método HTTP no permitido en la ruta solicitada");
-        ProblemDetail problem = problem(HttpStatus.METHOD_NOT_ALLOWED, "Método no permitido",
-                "El método HTTP no está permitido en este recurso", requestUri(request));
-        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).headers(headers).body(problem);
+        return genericResponse(ex, HttpStatus.METHOD_NOT_ALLOWED, headers, request);
     }
 
     @Override
@@ -157,9 +178,57 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                      HttpStatusCode status,
                                                                      WebRequest request) {
         LOG.warn("Tipo de contenido de la petición no soportado");
-        ProblemDetail problem = problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Tipo de contenido no soportado",
-                "El tipo de contenido de la petición no está soportado", requestUri(request));
-        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).headers(headers).body(problem);
+        return genericResponse(ex, HttpStatus.UNSUPPORTED_MEDIA_TYPE, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHttpMediaTypeNotAcceptable(HttpMediaTypeNotAcceptableException ex,
+                                                                      HttpHeaders headers,
+                                                                      HttpStatusCode status,
+                                                                      WebRequest request) {
+        LOG.warn("Ningún formato de respuesta es aceptable para el cliente");
+        return genericResponse(ex, HttpStatus.NOT_ACCEPTABLE, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMissingPathVariable(MissingPathVariableException ex,
+                                                               HttpHeaders headers,
+                                                               HttpStatusCode status,
+                                                               WebRequest request) {
+        if (status.is5xxServerError()) {
+            LOG.error("La variable de ruta {} no está declarada en la plantilla de la ruta", ex.getVariableName());
+        } else {
+            LOG.warn("Variable de ruta {} ausente tras la conversión", ex.getVariableName());
+        }
+        return genericResponse(ex, status, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMissingServletRequestParameter(MissingServletRequestParameterException ex,
+                                                                          HttpHeaders headers,
+                                                                          HttpStatusCode status,
+                                                                          WebRequest request) {
+        LOG.warn("Falta el parámetro obligatorio {}", ex.getParameterName());
+        return validationResponse(ex, List.of(new FieldErrorDto(ex.getParameterName(), REQUIRED_MESSAGE)),
+                headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMissingServletRequestPart(MissingServletRequestPartException ex,
+                                                                     HttpHeaders headers,
+                                                                     HttpStatusCode status,
+                                                                     WebRequest request) {
+        LOG.warn("Falta una parte obligatoria de la petición multipart");
+        return genericResponse(ex, HttpStatus.BAD_REQUEST, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleServletRequestBindingException(ServletRequestBindingException ex,
+                                                                          HttpHeaders headers,
+                                                                          HttpStatusCode status,
+                                                                          WebRequest request) {
+        LOG.warn("La petición no cumple los requisitos del endpoint ({})", ex.getClass().getSimpleName());
+        return genericResponse(ex, status, headers, request);
     }
 
     @Override
@@ -172,7 +241,83 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .map(error -> toFieldError(target, error))
                 .toList();
         LOG.warn("Petición con datos no válidos: {}", errors);
-        return validationResponse(errors, headers, request);
+        return validationResponse(ex, errors, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(HandlerMethodValidationException ex,
+                                                                            HttpHeaders headers,
+                                                                            HttpStatusCode status,
+                                                                            WebRequest request) {
+        if (status.is5xxServerError()) {
+            LOG.error("La respuesta de {} no cumple sus restricciones de validación", ex.getMethod().getName());
+            return genericResponse(ex, status, headers, request);
+        }
+        List<FieldErrorDto> errors = ex.getParameterValidationResults().stream()
+                .flatMap(result -> toFieldErrors(result).stream())
+                .toList();
+        LOG.warn("Parámetros de la petición no válidos: {}", errors);
+        return validationResponse(ex, errors, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleAsyncRequestTimeoutException(AsyncRequestTimeoutException ex,
+                                                                        HttpHeaders headers,
+                                                                        HttpStatusCode status,
+                                                                        WebRequest request) {
+        LOG.warn("Tiempo de espera agotado al procesar una petición asíncrona");
+        return genericResponse(ex, HttpStatus.SERVICE_UNAVAILABLE, headers, request);
+    }
+
+    /**
+     * Descarta a propósito el {@link ProblemDetail} que trae la propia excepción (su título y detalle
+     * pueden estar en inglés o incluir el valor recibido) y responde con el genérico de su estado.
+     */
+    @Override
+    protected ResponseEntity<Object> handleErrorResponseException(ErrorResponseException ex,
+                                                                  HttpHeaders headers,
+                                                                  HttpStatusCode status,
+                                                                  WebRequest request) {
+        LOG.warn("Petición rechazada con estado {} ({})", status.value(), ex.getClass().getSimpleName());
+        return genericResponse(ex, status, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
+                                                                          HttpHeaders headers,
+                                                                          HttpStatusCode status,
+                                                                          WebRequest request) {
+        LOG.warn("Cuerpo de la petición mayor que el tamaño máximo permitido");
+        return genericResponse(ex, HttpStatus.CONTENT_TOO_LARGE, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleConversionNotSupported(ConversionNotSupportedException ex,
+                                                                  HttpHeaders headers,
+                                                                  HttpStatusCode status,
+                                                                  WebRequest request) {
+        LOG.error("No hay conversor para el parámetro {} al tipo {}", ex.getPropertyName(),
+                ex.getRequiredType() == null ? UNKNOWN_FIELD : ex.getRequiredType().getSimpleName());
+        return genericResponse(ex, HttpStatus.INTERNAL_SERVER_ERROR, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHttpMessageNotWritable(HttpMessageNotWritableException ex,
+                                                                  HttpHeaders headers,
+                                                                  HttpStatusCode status,
+                                                                  WebRequest request) {
+        logError("No se ha podido escribir la respuesta", ex);
+        return genericResponse(ex, HttpStatus.INTERNAL_SERVER_ERROR, headers, request);
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMethodValidationException(MethodValidationException ex,
+                                                                     HttpHeaders headers,
+                                                                     HttpStatus status,
+                                                                     WebRequest request) {
+        LOG.error("Validación de método fallida en {}.{}", ex.getMethod().getDeclaringClass().getSimpleName(),
+                ex.getMethod().getName());
+        return genericResponse(ex, HttpStatus.INTERNAL_SERVER_ERROR, headers, request);
     }
 
     @Override
@@ -186,12 +331,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
         LOG.warn("Cuerpo de la petición no legible ({}) en el campo {}", causeName(ex), sanitizeForLog(field));
         if (field != null) {
-            return validationResponse(List.of(new FieldErrorDto(field, "tiene un formato no válido")),
+            return validationResponse(ex, List.of(new FieldErrorDto(field, INVALID_FORMAT_MESSAGE)),
                     headers, request);
         }
         ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, VALIDATION_TITLE,
                 "El cuerpo de la petición no es un JSON válido", requestUri(request));
-        return ResponseEntity.badRequest().headers(headers).body(problem);
+        return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
     }
 
     @Override
@@ -200,9 +345,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                         HttpStatusCode status,
                                                         WebRequest request) {
         LOG.warn("Parámetro con tipo no válido: {}", ex.getPropertyName());
-        String field = ex.getPropertyName() == null ? "desconocido" : ex.getPropertyName();
-        return validationResponse(List.of(new FieldErrorDto(field, "tiene un formato no válido")),
+        String field = ex.getPropertyName() == null ? UNKNOWN_FIELD : ex.getPropertyName();
+        return validationResponse(ex, List.of(new FieldErrorDto(field, INVALID_FORMAT_MESSAGE)),
                 headers, request);
+    }
+
+    /**
+     * Registra un error sin datos de la petición: a nivel ERROR, un mensaje fijo y el nombre simple de
+     * la clase de la excepción; la traza completa, cuyo mensaje puede incluir SQL, valores o texto del
+     * cuerpo, solo a nivel DEBUG.
+     */
+    private static void logError(String message, Exception ex) {
+        LOG.error("{} ({})", message, ex.getClass().getSimpleName());
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Traza de: {}", message, ex);
+        }
     }
 
     /**
@@ -211,13 +368,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     private static String sanitizeForLog(String field) {
         if (field == null) {
-            return "desconocido";
+            return UNKNOWN_FIELD;
         }
         String clean = NON_FIELD_CHARS.matcher(field).replaceAll("");
         if (clean.length() > MAX_LOGGED_FIELD_LENGTH) {
             clean = clean.substring(0, MAX_LOGGED_FIELD_LENGTH);
         }
-        return clean.isEmpty() ? "desconocido" : clean;
+        return clean.isEmpty() ? UNKNOWN_FIELD : clean;
     }
 
     /**
@@ -230,23 +387,74 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Construye la respuesta {@code 404} genérica de ruta inexistente, sin incluir la ruta en el detalle.
+     * Construye la respuesta genérica del estado indicado: título y detalle en español que no exponen
+     * nada de la petición. Conserva las cabeceras que aporte Spring (por ejemplo, {@code Allow}).
      */
-    private static ResponseEntity<Object> notFoundResponse(HttpHeaders headers, WebRequest request) {
-        ProblemDetail problem = problem(HttpStatus.NOT_FOUND, NOT_FOUND_TITLE, NOT_FOUND_DETAIL,
-                requestUri(request));
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).headers(headers).body(problem);
+    private ResponseEntity<Object> genericResponse(Exception ex, HttpStatusCode status, HttpHeaders headers,
+                                                   WebRequest request) {
+        HttpStatus resolved = HttpStatus.resolve(status.value());
+        if (resolved == null) {
+            resolved = status.is5xxServerError() ? HttpStatus.INTERNAL_SERVER_ERROR : HttpStatus.BAD_REQUEST;
+        }
+        GenericError error = GenericError.of(resolved);
+        return buildInherited(ex, resolved, error.title(), error.detail(), headers, request);
     }
 
     /**
      * Construye la respuesta {@code 400} con la lista de campos incorrectos.
      */
-    private ResponseEntity<Object> validationResponse(List<FieldErrorDto> errors, HttpHeaders headers,
-                                                      WebRequest request) {
+    private ResponseEntity<Object> validationResponse(Exception ex, List<FieldErrorDto> errors,
+                                                      HttpHeaders headers, WebRequest request) {
         ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, VALIDATION_TITLE, VALIDATION_DETAIL,
                 requestUri(request));
         problem.setProperty(ERRORS_PROPERTY, errors);
-        return ResponseEntity.badRequest().headers(headers).body(problem);
+        return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    /**
+     * Traduce el resultado de validación de un parámetro del controlador a errores de campo: si el
+     * parámetro es un objeto validado, un error por campo; si es un valor simple, un error con el
+     * nombre del parámetro en la API.
+     */
+    private static List<FieldErrorDto> toFieldErrors(ParameterValidationResult result) {
+        if (result instanceof ParameterErrors parameterErrors) {
+            Class<?> target = parameterErrors.getMethodParameter().getParameterType();
+            return parameterErrors.getFieldErrors().stream()
+                    .map(error -> toFieldError(target, error))
+                    .toList();
+        }
+        String field = apiParameterName(result.getMethodParameter());
+        return result.getResolvableErrors().stream()
+                .map(error -> new FieldErrorDto(field, messageOf(error)))
+                .toList();
+    }
+
+    /**
+     * Nombre con el que el cliente conoce un parámetro: el declarado en {@link RequestParam},
+     * {@link PathVariable} o {@link RequestHeader}, o el nombre Java si no se declara ninguno.
+     */
+    private static String apiParameterName(MethodParameter parameter) {
+        String declared = "";
+        RequestParam requestParam = parameter.getParameterAnnotation(RequestParam.class);
+        PathVariable pathVariable = parameter.getParameterAnnotation(PathVariable.class);
+        RequestHeader requestHeader = parameter.getParameterAnnotation(RequestHeader.class);
+        if (requestParam != null) {
+            declared = requestParam.name();
+        } else if (pathVariable != null) {
+            declared = pathVariable.name();
+        } else if (requestHeader != null) {
+            declared = requestHeader.name();
+        }
+        if (!declared.isEmpty()) {
+            return declared;
+        }
+        String javaName = parameter.getParameterName();
+        return javaName == null ? UNKNOWN_FIELD : javaName;
+    }
+
+    private static String messageOf(MessageSourceResolvable error) {
+        String message = error.getDefaultMessage();
+        return message == null || message.isBlank() ? INVALID_VALUE_MESSAGE : message;
     }
 
     /**
@@ -269,6 +477,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static ResponseEntity<ProblemDetail> build(HttpStatus status, String title, String detail,
                                                        HttpServletRequest request) {
         return ResponseEntity.status(status).body(problem(status, title, detail, request.getRequestURI()));
+    }
+
+    /**
+     * Variante de {@link #build(HttpStatus, String, String, HttpServletRequest)} para los métodos
+     * heredados de {@link ResponseEntityExceptionHandler}: delega en
+     * {@link #handleExceptionInternal} para respetar sus comprobaciones (respuesta ya enviada,
+     * atributo de error en los {@code 5xx}).
+     */
+    private ResponseEntity<Object> buildInherited(Exception ex, HttpStatus status, String title, String detail,
+                                                  HttpHeaders headers, WebRequest request) {
+        ProblemDetail problem = problem(status, title, detail, requestUri(request));
+        return handleExceptionInternal(ex, problem, headers, status, request);
     }
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail, String uri) {
@@ -299,5 +519,36 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return servletRequest.getRequest().getRequestURI();
         }
         return null;
+    }
+
+    /**
+     * Título y detalle genéricos, en español, de una respuesta de error según su estado HTTP.
+     *
+     * @param title  título del problema
+     * @param detail detalle del problema, sin datos de la petición
+     */
+    private record GenericError(String title, String detail) {
+
+        private static GenericError of(HttpStatusCode status) {
+            return switch (status.value()) {
+                case 400 -> new GenericError("Petición no válida", "La petición no tiene el formato esperado");
+                case 404 -> new GenericError("No encontrado", "El recurso solicitado no existe");
+                case 405 -> new GenericError("Método no permitido",
+                        "El método HTTP no está permitido en este recurso");
+                case 406 -> new GenericError("No aceptable",
+                        "No se puede generar la respuesta en ninguno de los formatos aceptados");
+                case 409 -> new GenericError("Conflicto",
+                        "La petición entra en conflicto con el estado actual del recurso");
+                case 413 -> new GenericError("Contenido demasiado grande",
+                        "El cuerpo de la petición supera el tamaño máximo permitido");
+                case 415 -> new GenericError("Tipo de contenido no soportado",
+                        "El tipo de contenido de la petición no está soportado");
+                case 503 -> new GenericError("Servicio no disponible",
+                        "El servicio no está disponible temporalmente; inténtalo de nuevo más tarde");
+                default -> status.is5xxServerError()
+                        ? new GenericError("Error interno", "Se ha producido un error inesperado")
+                        : new GenericError("Petición rechazada", "No se puede procesar la petición");
+            };
+        }
     }
 }
