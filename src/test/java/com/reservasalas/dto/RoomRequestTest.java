@@ -47,4 +47,19 @@ class RoomRequestTest {
         RoomRequest decomposed = new RoomRequest("sala\u0301n", 3, 1);
         assertThat(Room.normalizeName(composed.name())).isEqualTo(Room.normalizeName(decomposed.name()));
     }
+
+    @Test
+    void reduceEspaciosInternosYRecorta() {
+        assertThat(new RoomRequest("  SALA   NUEVA ", 3, 1).name()).isEqualTo("SALA NUEVA");
+    }
+
+    @Test
+    void tabuladorYEspacioDeNoSeparacionInternosSeReducenAUnEspacio() {
+        assertThat(new RoomRequest("Sala\t\u00a0 Nueva", 3, 1).name()).isEqualTo("Sala Nueva");
+    }
+
+    @Test
+    void nombreSoloConEspaciosUnicodeFallaLaValidacion() {
+        assertThat(validator.validate(new RoomRequest("\u00a0\t \u00a0", 3, 1))).hasSize(1);
+    }
 }

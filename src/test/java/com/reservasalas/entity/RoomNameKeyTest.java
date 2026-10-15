@@ -33,4 +33,28 @@ class RoomNameKeyTest {
         Room room = new Room("  Sal" + A_COMPUESTA + "n  ", 4, 1);
         assertThat(room.getName()).isEqualTo("Sal" + A_COMPUESTA + "n").doesNotStartWith(" ");
     }
+
+    @Test
+    void cleanNameReduceEspaciosInternosYRecorta() {
+        assertThat(Room.cleanName("  SALA   NUEVA ")).isEqualTo("SALA NUEVA");
+        assertThat(Room.cleanName(null)).isNull();
+    }
+
+    @Test
+    void cleanNameTratamosTabuladorYEspacioDeNoSeparacionComoEspacios() {
+        assertThat(Room.cleanName("Sala\t\tNueva")).isEqualTo("Sala Nueva");
+        assertThat(Room.cleanName("Sala\u00a0\u00a0Nueva")).isEqualTo("Sala Nueva");
+        assertThat(Room.cleanName("\u00a0Sala \t\u00a0Nueva\u00a0")).isEqualTo("Sala Nueva");
+    }
+
+    @Test
+    void normalizeNameUnificaEspaciosInternosYMayusculas() {
+        assertThat(Room.normalizeName("  SALA   NUEVA ")).isEqualTo("sala nueva");
+        assertThat(Room.normalizeName("Sala\u00a0Nueva")).isEqualTo(Room.normalizeName("sala\tnueva"));
+    }
+
+    @Test
+    void salaGuardaElNombreSinEspaciosDobles() {
+        assertThat(new Room("  SALA   NUEVA ", 4, 1).getName()).isEqualTo("SALA NUEVA");
+    }
 }

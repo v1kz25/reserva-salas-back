@@ -412,4 +412,23 @@ class GestionSalasIntegrationTest {
                 .andExpect(status().isForbidden());
         assertThat(rooms.existsById(room.getId())).isTrue();
     }
+
+    @Test
+    void espaciosInternosDuplicadosNoEvitanElConflictoYSeGuardaUnSoloEspacio() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        send(admin, post("/api/salas"), json("Sala Nueva " + suffix, 5, 1))
+                .andExpect(status().isCreated());
+
+        send(admin, post("/api/salas"), json("  SALA   NUEVA   " + suffix.toUpperCase() + " ", 5, 1))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("Nombre de sala repetido"));
+
+        String spaced = "Sala   Doble\t\u00a0Espacio " + suffix;
+        String body = "{\"nombre\":\"Sala   Doble\\t\\u00a0Espacio " + suffix + "\",\"capacidad\":2,\"planta\":1}";
+        send(admin, post("/api/salas"), body)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.nombre").value("Sala Doble Espacio " + suffix));
+        assertThat(rooms.findAll()).extracting(Room::getName).noneMatch(n -> n.contains("  "));
+        assertThat(spaced).contains("   ");
+    }
 }

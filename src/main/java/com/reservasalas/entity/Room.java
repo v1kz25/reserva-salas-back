@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.text.Normalizer;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Sala de reuniones que se puede reservar. El nombre se guarda en forma Unicode NFC y sin espacios
@@ -25,6 +26,7 @@ public class Room {
     public static final String UNIQUE_NAME_CONSTRAINT = "UK_ROOMS_NAME_KEY";
 
     private static final int MAX_NAME_LENGTH = 100;
+    private static final Pattern WHITESPACE_RUN = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
 
     /**
      * Longitud de la clave normalizada: el doble que la del nombre, porque pasar a minúsculas puede
@@ -66,7 +68,8 @@ public class Room {
 
     /**
      * Nombre tal y como se guarda: en forma Unicode NFC (para que una «á» compuesta y otra
-     * descompuesta sean el mismo texto) y sin espacios en los extremos.
+     * descompuesta sean el mismo texto), con cada secuencia de espacios en blanco reducida a un
+     * único espacio y sin espacios en los extremos.
      *
      * @param name nombre de la sala
      * @return el nombre limpio, o {@code null} si era nulo
@@ -75,12 +78,13 @@ public class Room {
         if (name == null) {
             return null;
         }
-        return Normalizer.normalize(name, Normalizer.Form.NFC).strip();
+        String nfc = Normalizer.normalize(name, Normalizer.Form.NFC);
+        return WHITESPACE_RUN.matcher(nfc).replaceAll(" ").strip();
     }
 
     /**
-     * Forma normalizada de un nombre de sala con la que se comprueba la unicidad: en forma Unicode
-     * NFC, sin espacios en los extremos y en minúsculas.
+     * Forma normalizada de un nombre de sala con la que se comprueba la unicidad: el nombre limpio
+     * de {@link #cleanName(String)} en minúsculas.
      *
      * @param name nombre de la sala
      * @return el nombre normalizado, o {@code null} si era nulo
