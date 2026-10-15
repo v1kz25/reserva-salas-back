@@ -159,4 +159,42 @@ class ReservationRepositoryTest {
                 ReservationSpecifications.onOrAfter(DAY.minusDays(1)),
                 ReservationSpecifications.onOrBefore(DAY.plusDays(1))))).containsExactly("Antes", "Ana", "Despues");
     }
+
+    @Test
+    void deleteByIdReturningCountBorraYDevuelve1() {
+        Long id = reservations.findAll().get(0).getId();
+
+        assertThat(reservations.deleteByIdReturningCount(id)).isEqualTo(1);
+
+        assertThat(reservations.findById(id)).isEmpty();
+    }
+
+    @Test
+    void deleteByIdReturningCountInexistenteDevuelve0() {
+        assertThat(reservations.deleteByIdReturningCount(-1L)).isZero();
+        assertThat(reservations.count()).isEqualTo(1);
+    }
+
+    @Test
+    void deleteByIdReturningCountDosVecesDevuelve1Y0() {
+        Long id = reservations.findAll().get(0).getId();
+
+        assertThat(reservations.deleteByIdReturningCount(id)).isEqualTo(1);
+        assertThat(reservations.deleteByIdReturningCount(id)).isZero();
+    }
+
+    @Test
+    void deleteByIdReturningCountSoloBorraLaIndicadaYLiberaLaFranja() {
+        Long other = reservations.save(new Reservation(roomA, DAY, LocalTime.of(12, 0), LocalTime.of(13, 0),
+                "Luis", "y")).getId();
+        Long first = reservations.findAll().stream()
+                .filter(r -> !r.getId().equals(other)).findFirst().orElseThrow().getId();
+        assertThat(overlaps(roomA, DAY, "10:00", "11:00")).isTrue();
+
+        reservations.deleteByIdReturningCount(first);
+
+        assertThat(overlaps(roomA, DAY, "10:00", "11:00")).isFalse();
+        assertThat(overlaps(roomA, DAY, "12:00", "13:00")).isTrue();
+        assertThat(reservations.findById(other)).isPresent();
+    }
 }
