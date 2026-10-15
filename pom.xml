@@ -83,7 +83,7 @@
 		<!--
 			Auditoría de dependencias con OWASP dependency-check. No se ejecuta en el build
 			normal: ./mvnw -P dependency-check verify. Es informativa (nunca rompe el build).
-			La clave de la API de NVD es opcional: -DnvdApiKeyEnvironmentVariable=NVD_API_KEY.
+			Necesita la clave de la API de NVD: -DnvdApiKeyEnvironmentVariable=NVD_API_KEY.
 		-->
 		<profile>
 			<id>dependency-check</id>

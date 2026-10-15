@@ -13,8 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -28,7 +28,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Revisar dependencias de la PR
         uses: actions/dependency-review-action@v5
         continue-on-error: true
@@ -37,44 +37,53 @@ jobs:
           warn-only: true
 
   # Auditoría completa de dependencias con OWASP dependency-check (informativa).
-  # La base de datos de NVD se guarda en caché entre ejecuciones; el secreto NVD_API_KEY es opcional.
+  # Necesita el secreto NVD_API_KEY: sin él, la API de NVD rechaza las peticiones y el job solo avisa.
+  # La base de datos de NVD se guarda en caché entre ejecuciones.
   dependency-check:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Avisar si falta el secreto NVD_API_KEY
+        if: env.NVD_API_KEY == ''
+        run: |
+          echo "::warning::Auditoría OWASP no ejecutada: falta el secreto NVD_API_KEY."
+          {
+            echo "## Auditoría de dependencias (OWASP dependency-check)"
+            echo
+            echo "**No se ha ejecutado**: falta el secreto \`NVD_API_KEY\`. Sin clave, la API de NVD rechaza las peticiones."
+            echo
+            echo "Para activarla, solicita una clave en https://nvd.nist.gov/developers/request-an-api-key y créala como secreto \`NVD_API_KEY\` en *Settings → Secrets and variables → Actions* (y en *Dependabot* si quieres auditar también sus PRs)."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v7
+        if: env.NVD_API_KEY != ''
+      - uses: actions/setup-java@v5
+        if: env.NVD_API_KEY != ''
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
       - name: Restaurar la base de datos de dependency-check
+        if: env.NVD_API_KEY != ''
         uses: actions/cache/restore@v6
         with:
           path: ~/.dependency-check/data
           key: dependency-check-data-${{ github.run_id }}
           restore-keys: dependency-check-data-
       - name: Auditar dependencias
+        if: env.NVD_API_KEY != ''
         continue-on-error: true
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          args=()
-          if [ -n "$NVD_API_KEY" ]; then
-            args+=("-DnvdApiKeyEnvironmentVariable=NVD_API_KEY")
-          else
-            echo "::notice::Sin secreto NVD_API_KEY: la descarga de la base de datos de NVD será lenta."
-          fi
-          ./mvnw -B -P dependency-check -DskipTests "${args[@]}" verify
+        run: ./mvnw -B -P dependency-check -DskipTests -DnvdApiKeyEnvironmentVariable=NVD_API_KEY verify
       - name: Guardar la base de datos de dependency-check
-        if: always() && github.event_name == 'push'
+        if: always() && env.NVD_API_KEY != '' && github.event_name == 'push'
         continue-on-error: true
         uses: actions/cache/save@v6
         with:
           path: ~/.dependency-check/data
           key: dependency-check-data-${{ github.run_id }}
       - name: Resumen de la auditoría
-        if: always()
+        if: always() && env.NVD_API_KEY != ''
         continue-on-error: true
         run: |
           report=target/dependency-check-report.json
@@ -106,7 +115,7 @@ jobs:
                    | "| \(.fileName) | \([.vulnerabilities[].name] | join(", ")) |"' "$report"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Subir el informe
-        if: always()
+        if: always() && env.NVD_API_KEY != ''
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:

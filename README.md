@@ -40,15 +40,14 @@ Variables de entorno (hay un ejemplo en [`.env.example`](.env.example)):
 - **Dependabot** (`.github/dependabot.yml`) revisa cada semana las dependencias de Maven y las GitHub Actions y abre PRs contra `develop`.
 - **CI** (`.github/workflows/ci.yml`), siempre de forma informativa (no bloquea el build):
   - En las PRs, `dependency-review` avisa de las dependencias nuevas o actualizadas con vulnerabilidades conocidas (GitHub Advisory Database).
-  - En cada build, `dependency-check` ejecuta [OWASP dependency-check](https://owasp.org/www-project-dependency-check/) sobre todas las dependencias. El resumen aparece en la página de la ejecución y el informe HTML/JSON se descarga como artifact `dependency-check-report`. La base de datos de NVD se guarda en caché entre ejecuciones.
+  - En cada build, `dependency-check` ejecuta [OWASP dependency-check](https://owasp.org/www-project-dependency-check/) sobre todas las dependencias. El resumen aparece en la página de la ejecución y el informe HTML/JSON se descarga como artifact `dependency-check-report`. La base de datos de NVD se guarda en caché entre ejecuciones. Necesita una clave de la API de NVD (ver abajo).
 
-Clave de la API de NVD (opcional): sin ella la primera descarga de la base de datos es muy lenta y puede fallar. Para usarla, [solicítala a NVD](https://nvd.nist.gov/developers/request-an-api-key) y créala como secreto `NVD_API_KEY` del repositorio (*Settings → Secrets and variables → Actions*). Si el secreto no existe, la auditoría se ejecuta igual sin clave.
+Clave de la API de NVD: sin ella, la API de NVD rechaza las peticiones y dependency-check no puede ejecutarse. **Si el secreto no existe, el job `dependency-check` no audita nada**: solo deja un aviso en el resumen de la ejecución, y la única auditoría activa es `dependency-review` en las PRs. Para activarla, [solicita una clave a NVD](https://nvd.nist.gov/developers/request-an-api-key) y créala como secreto `NVD_API_KEY` del repositorio (*Settings → Secrets and variables → Actions*). Las PRs de Dependabot no ven esos secretos: para auditarlas también, crea el mismo secreto en *Settings → Secrets and variables → Dependabot*.
 
-En local, la auditoría va en un perfil para no ralentizar el build normal:
+En local, la auditoría va en un perfil para no ralentizar el build normal (también necesita la clave):
 
 ```bash
-./mvnw -P dependency-check -DskipTests verify
-# con clave: NVD_API_KEY=... ./mvnw -P dependency-check -DskipTests -DnvdApiKeyEnvironmentVariable=NVD_API_KEY verify
+NVD_API_KEY=... ./mvnw -P dependency-check -DskipTests -DnvdApiKeyEnvironmentVariable=NVD_API_KEY verify
 ```
 
 El informe queda en `target/dependency-check-report.html`.
