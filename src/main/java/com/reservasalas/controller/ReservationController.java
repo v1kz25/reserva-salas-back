@@ -8,7 +8,9 @@ import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 /**
- * Endpoints de consulta y alta de reservas.
+ * Endpoints de consulta, alta y cancelación de reservas.
  */
 @RestController
 @RequestMapping("/api/reservas")
@@ -50,6 +52,17 @@ public class ReservationController {
     }
 
     /**
+     * Obtiene una reserva.
+     *
+     * @param id identificador de la reserva
+     * @return la reserva
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<ReservationDto> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(reservationService.findById(id));
+    }
+
+    /**
      * Crea una reserva.
      *
      * @param request datos de la reserva
@@ -63,5 +76,17 @@ public class ReservationController {
                 .buildAndExpand(created.id())
                 .toUri();
         return ResponseEntity.created(location).body(created);
+    }
+
+    /**
+     * Cancela una reserva; su franja queda libre.
+     *
+     * @param id identificador de la reserva
+     * @return respuesta vacía {@code 204}
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> cancel(@PathVariable Long id) {
+        reservationService.cancel(id);
+        return ResponseEntity.noContent().build();
     }
 }

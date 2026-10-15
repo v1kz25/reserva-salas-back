@@ -7,6 +7,7 @@ import com.reservasalas.entity.Room;
 import com.reservasalas.exception.InvalidDateRangeException;
 import com.reservasalas.exception.InvalidReservationException;
 import com.reservasalas.exception.OverlappingReservationException;
+import com.reservasalas.exception.ReservationNotFoundException;
 import com.reservasalas.exception.RoomNotFoundException;
 import com.reservasalas.repository.ReservationRepository;
 import com.reservasalas.repository.ReservationSpecifications;
@@ -22,7 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Lógica de negocio de las reservas: consulta y alta sin solapamientos.
+ * Lógica de negocio de las reservas: consulta, alta sin solapamientos y cancelación.
  */
 @Service
 public class ReservationService {
@@ -73,6 +74,20 @@ public class ReservationService {
     }
 
     /**
+     * Obtiene una reserva por su identificador.
+     *
+     * @param id identificador de la reserva
+     * @return la reserva
+     * @throws ReservationNotFoundException si la reserva no existe
+     */
+    @Transactional(readOnly = true)
+    public ReservationDto findById(Long id) {
+        return reservationRepository.findById(id)
+                .map(ReservationDto::from)
+                .orElseThrow(() -> new ReservationNotFoundException(id));
+    }
+
+    /**
      * Crea una reserva comprobando las reglas de negocio. La sala se bloquea durante la
      * transacción para que dos altas simultáneas no puedan solaparse.
      *
@@ -102,6 +117,20 @@ public class ReservationService {
                 saved.getDate(), saved.getStartTime(), saved.getEndTime());
 
         return ReservationDto.from(saved);
+    }
+
+    /**
+     * Cancela una reserva borrándola, de modo que su franja queda libre para otras reservas.
+     *
+     * @param id identificador de la reserva
+     * @throws ReservationNotFoundException si la reserva no existe o ya se había cancelado
+     */
+    @Transactional
+    public void cancel(Long id) {
+        if (reservationRepository.deleteByIdReturningCount(id) == 0) {
+            throw new ReservationNotFoundException(id);
+        }
+        LOG.info("Reserva {} cancelada", id);
     }
 
     /**

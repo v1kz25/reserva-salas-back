@@ -63,6 +63,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Reserva no encontrada.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 404}
+     */
+    @ExceptionHandler(ReservationNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleReservationNotFound(ReservationNotFoundException ex,
+                                                                   HttpServletRequest request) {
+        LOG.warn("Reserva no encontrada: {}", ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, "Reserva no encontrada", ex.getMessage(), request);
+    }
+
+    /**
      * Reserva solapada con otra de la misma sala.
      *
      * @param ex      excepción capturada

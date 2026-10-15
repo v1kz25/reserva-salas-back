@@ -2,9 +2,12 @@ package com.reservasalas.controller;
 
 import static org.hamcrest.Matchers.endsWith;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -17,6 +20,7 @@ import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.exception.InvalidDateRangeException;
 import com.reservasalas.exception.InvalidReservationException;
 import com.reservasalas.exception.OverlappingReservationException;
+import com.reservasalas.exception.ReservationNotFoundException;
 import com.reservasalas.exception.RoomNotFoundException;
 import com.reservasalas.service.ReservationService;
 import java.time.LocalDate;
@@ -293,5 +297,73 @@ class ReservationControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.errores[0].campo").value("fecha"));
+    }
+
+    @Test
+    void getPorIdDevuelve200ConLaReserva() throws Exception {
+        when(service.findById(7L)).thenReturn(new ReservationDto(7L, 1L, LocalDate.of(2030, 5, 10),
+                LocalTime.of(10, 0), LocalTime.of(11, 0), "Ana", "Reunión"));
+
+        mvc.perform(get("/api/reservas/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(7))
+                .andExpect(jsonPath("$.salaId").value(1))
+                .andExpect(jsonPath("$.fecha").value("2030-05-10"))
+                .andExpect(jsonPath("$.horaInicio").value("10:00"))
+                .andExpect(jsonPath("$.horaFin").value("11:00"))
+                .andExpect(jsonPath("$.responsable").value("Ana"))
+                .andExpect(jsonPath("$.motivo").value("Reunión"));
+    }
+
+    @Test
+    void getPorIdInexistenteDevuelve404ProblemDetail() throws Exception {
+        when(service.findById(99L)).thenThrow(new ReservationNotFoundException(99L));
+
+        mvc.perform(get("/api/reservas/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Reserva no encontrada"))
+                .andExpect(jsonPath("$.detail").exists());
+    }
+
+    @Test
+    void deleteDevuelve204SinCuerpoYDelegaEnElServicio() throws Exception {
+        doNothing().when(service).cancel(7L);
+
+        mvc.perform(delete("/api/reservas/7"))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+        verify(service).cancel(7L);
+    }
+
+    @Test
+    void deleteInexistenteDevuelve404ProblemDetail() throws Exception {
+        doThrow(new ReservationNotFoundException(99L)).when(service).cancel(99L);
+
+        mvc.perform(delete("/api/reservas/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Reserva no encontrada"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"abc", "1.5", "12abc"})
+    void getConIdNoNumericoDa400SinLlamarAlServicio(String id) throws Exception {
+        mvc.perform(get("/api/reservas/" + id))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(400));
+        verifyNoInteractions(service);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"abc", "1.5"})
+    void deleteConIdNoNumericoDa400SinLlamarAlServicio(String id) throws Exception {
+        mvc.perform(delete("/api/reservas/" + id))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        verifyNoInteractions(service);
     }
 }

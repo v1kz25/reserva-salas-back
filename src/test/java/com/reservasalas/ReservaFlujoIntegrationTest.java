@@ -1,8 +1,11 @@
 package com.reservasalas;
 
+import static org.hamcrest.Matchers.endsWith;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -22,6 +25,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -82,6 +86,12 @@ class ReservaFlujoIntegrationTest {
                 .andExpect(jsonPath("$.errores[0].campo").value("horaFin"));
     }
 
+    private String idDe(ResultActions creada) throws Exception {
+        MvcResult result = creada.andReturn();
+        String location = result.getResponse().getHeader("Location");
+        return location.substring(location.lastIndexOf('/') + 1);
+    }
+
     private ResultActions crearEnFecha(String date) throws Exception {
         String body = """
                 {"salaId":%d,"fecha":"%s","horaInicio":"10:00","horaFin":"11:00",
@@ -125,5 +135,79 @@ class ReservaFlujoIntegrationTest {
                 .andExpect(jsonPath("$[0].fecha").value("2026-10-02"));
         mvc.perform(get("/api/reservas").param("salaId", roomId.toString()).param("fechaDesde", "2026-10-02"))
                 .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void postDevuelveLocationQueApuntaALaReservaConsultable() throws Exception {
+        ResultActions creada = crear("10:00", "11:00").andExpect(status().isCreated());
+        String id = idDe(creada);
+        creada.andExpect(header().string("Location", endsWith("/api/reservas/" + id)));
+
+        mvc.perform(get("/api/reservas/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(Integer.parseInt(id)))
+                .andExpect(jsonPath("$.salaId").value(roomId.intValue()))
+                .andExpect(jsonPath("$.fecha").value("2030-05-10"))
+                .andExpect(jsonPath("$.horaInicio").value("10:00"))
+                .andExpect(jsonPath("$.horaFin").value("11:00"))
+                .andExpect(jsonPath("$.responsable").value("Ana"))
+                .andExpect(jsonPath("$.motivo").value("Reunión"));
+    }
+
+    @Test
+    void getYDeleteDeIdInexistenteDan404ProblemDetail() throws Exception {
+        mvc.perform(get("/api/reservas/999999"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(404));
+        mvc.perform(delete("/api/reservas/999999"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    void cancelarDa204LiberaLaFranjaYUnaSegundaCancelacionDa404() throws Exception {
+        String id = idDe(crear("10:00", "11:00").andExpect(status().isCreated()));
+        crear("10:30", "11:30").andExpect(status().isConflict());
+
+        mvc.perform(delete("/api/reservas/" + id))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        mvc.perform(get("/api/reservas/" + id))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        mvc.perform(delete("/api/reservas/" + id))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(404));
+
+
+        // La misma franja vuelve a estar disponible
+        crear("10:00", "11:00").andExpect(status().isCreated());
+    }
+
+    @Test
+    void listadoNoIncluyeLaReservaCancelada() throws Exception {
+        String cancelada = idDe(crear("10:00", "11:00").andExpect(status().isCreated()));
+        String viva = idDe(crear("12:00", "13:00").andExpect(status().isCreated()));
+
+        mvc.perform(delete("/api/reservas/" + cancelada)).andExpect(status().isNoContent());
+
+        mvc.perform(get("/api/reservas").param("salaId", roomId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(Integer.parseInt(viva)));
+    }
+
+    @Test
+    void idNoNumericoDa400ProblemDetail() throws Exception {
+        mvc.perform(get("/api/reservas/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        mvc.perform(delete("/api/reservas/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 }

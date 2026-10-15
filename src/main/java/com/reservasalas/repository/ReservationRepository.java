@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -35,4 +36,19 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long>,
                               @Param("date") LocalDate date,
                               @Param("startTime") LocalTime startTime,
                               @Param("endTime") LocalTime endTime);
+
+    /**
+     * Borra la reserva con una única sentencia, de forma que dos cancelaciones simultáneas de la
+     * misma reserva no fallen: la segunda simplemente no borra nada.
+     *
+     * <p>Ojo: {@code clearAutomatically = true} vacía todo el contexto de persistencia. Si se llama
+     * dentro de una transacción que ya tiene otras entidades cargadas, esas entidades quedan
+     * desvinculadas; conviene llamarlo al final de la transacción o volver a cargarlas después.
+     *
+     * @param id identificador de la reserva
+     * @return número de reservas borradas: {@code 1} si existía, {@code 0} si no
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM Reservation r WHERE r.id = :id")
+    int deleteByIdReturningCount(@Param("id") Long id);
 }

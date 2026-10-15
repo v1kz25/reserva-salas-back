@@ -17,6 +17,7 @@ import com.reservasalas.entity.Room;
 import com.reservasalas.exception.InvalidDateRangeException;
 import com.reservasalas.exception.InvalidReservationException;
 import com.reservasalas.exception.OverlappingReservationException;
+import com.reservasalas.exception.ReservationNotFoundException;
 import com.reservasalas.exception.RoomNotFoundException;
 import com.reservasalas.repository.ReservationRepository;
 import com.reservasalas.repository.RoomRepository;
@@ -34,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ReservationServiceTest {
@@ -169,5 +171,49 @@ class ReservationServiceTest {
         service.find(null, null, null);
 
         verify(reservationRepository).findAll(any(Specification.class), eq(Sort.by("date", "startTime")));
+    }
+
+    @Test
+    void findByIdDevuelveElDtoDeLaReserva() {
+        Reservation reservation = new Reservation(room, TODAY.plusDays(1), LocalTime.of(10, 0),
+                LocalTime.of(11, 0), "Ana", "Reunión");
+        ReflectionTestUtils.setField(room, "id", 1L);
+        when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservation));
+
+        ReservationDto dto = service.findById(5L);
+
+        assertThat(dto.roomId()).isEqualTo(1L);
+        assertThat(dto.date()).isEqualTo(TODAY.plusDays(1));
+        assertThat(dto.startTime()).isEqualTo(LocalTime.of(10, 0));
+        assertThat(dto.endTime()).isEqualTo(LocalTime.of(11, 0));
+        assertThat(dto.responsible()).isEqualTo("Ana");
+        assertThat(dto.reason()).isEqualTo("Reunión");
+    }
+
+    @Test
+    void findByIdInexistenteLanzaReservationNotFound() {
+        when(reservationRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.findById(99L))
+                .isInstanceOf(ReservationNotFoundException.class)
+                .hasMessageContaining("99");
+    }
+
+    @Test
+    void cancelBorraLaReservaExistente() {
+        when(reservationRepository.deleteByIdReturningCount(5L)).thenReturn(1);
+
+        service.cancel(5L);
+
+        verify(reservationRepository).deleteByIdReturningCount(5L);
+    }
+
+    @Test
+    void cancelInexistenteOYaCanceladaLanzaReservationNotFound() {
+        when(reservationRepository.deleteByIdReturningCount(5L)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.cancel(5L))
+                .isInstanceOf(ReservationNotFoundException.class)
+                .hasMessageContaining("5");
     }
 }
