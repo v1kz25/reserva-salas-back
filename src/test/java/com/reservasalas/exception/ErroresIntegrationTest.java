@@ -103,6 +103,27 @@ class ErroresIntegrationTest {
     }
 
     @Test
+    void formatoNoAceptableDevuelve406ProblemDetailGenericoYSinRastroEnElLog(CapturedOutput output) throws Exception {
+        mvc.perform(get("/api/salas").accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotAcceptable())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(406))
+                .andExpect(jsonPath("$.title").value("No aceptable"))
+                .andExpect(jsonPath("$.detail")
+                        .value("No se puede generar la respuesta en ninguno de los formatos aceptados"))
+                .andExpect(jsonPath("$.instance").value("/api/salas"))
+                .andExpect(content().string(not(containsString("application/xml"))))
+                .andExpect(content().string(not(containsString("Exception"))))
+                .andExpect(content().string(not(containsString("org.springframework"))));
+
+        assertThat(output.getAll())
+                .contains("Ningún formato de respuesta es aceptable para el cliente")
+                .doesNotContain("application/xml")
+                .doesNotContain("GET /api/salas")
+                .doesNotContain("HttpMediaTypeNotAcceptableException");
+    }
+
+    @Test
     void erroresExistentesNoHanCambiado() throws Exception {
         mvc.perform(post("/api/reservas").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isBadRequest())
