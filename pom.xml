@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.reservasalas</groupId>
 	<artifactId>reserva-salas-back</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.1.0</version>
 	<name>reserva-salas-back</name>
 	<description>API REST de reserva de salas</description>
 	<url/>
