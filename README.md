@@ -20,6 +20,14 @@ La API queda en `http://localhost:8080/api`. Con el perfil `dev`:
 - Se permite CORS desde `http://localhost:4200` (el frontend).
 - La consola de H2 está en `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:reservasalas`, usuario `sa`, sin contraseña).
 
+## Configuración
+
+Variables de entorno (hay un ejemplo en [`.env.example`](.env.example)):
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `APP_TIMEZONE` | `Europe/Madrid` | Zona horaria (identificador IANA) con la que se calculan «hoy» y «mañana» para validar las fechas de las reservas. Si no es válida, la aplicación no arranca. |
+
 ## Compilar y probar
 
 ```bash
