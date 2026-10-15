@@ -38,7 +38,7 @@ class ErroresIntegrationTest {
     private MockMvc mvc;
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/no-existe", "/api/salas/1/otra", "/api/reservas/7", "/no-existe", "/api/"})
+    @ValueSource(strings = {"/api/no-existe", "/api/salas/1/otra", "/api/reservas/7/otra", "/no-existe", "/api/"})
     void rutaInexistenteDevuelve404ProblemDetailSinDetallesInternos(String path) throws Exception {
         mvc.perform(get(path))
                 .andExpect(status().isNotFound())
@@ -55,8 +55,8 @@ class ErroresIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"/api/no-existe", "/api/salas/1"})
     void postEnRutaSinControladorDa404Generico(String path) throws Exception {
-        // Solo existen GET /api/salas, GET /api/reservas y POST /api/reservas: no hay rutas con
-        // PUT/DELETE, y el manejador de recursos estáticos responde 404 (no 405) a un POST.
+        // Estas rutas no tienen controlador (ni /api/salas/{id}), así que el manejador de recursos
+        // estáticos responde 404 (no 405) a un POST.
         mvc.perform(post(path))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))

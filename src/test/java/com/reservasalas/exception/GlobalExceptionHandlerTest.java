@@ -40,7 +40,7 @@ class GlobalExceptionHandlerTest {
     private ReservationService reservationService;
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/no-existe", "/api/reservas/7", "/api/salas/1/otra"})
+    @ValueSource(strings = {"/api/no-existe", "/api/reservas/7/otra", "/api/salas/1/otra"})
     void rutaInexistenteDevuelve404ProblemDetailGenerico(String path) throws Exception {
         mvc.perform(get(path))
                 .andExpect(status().isNotFound())
