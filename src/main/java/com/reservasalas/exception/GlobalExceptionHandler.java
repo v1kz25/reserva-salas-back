@@ -120,6 +120,34 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Nombre de sala repetido al crear o modificar una sala.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 409}
+     */
+    @ExceptionHandler(DuplicateRoomNameException.class)
+    public ResponseEntity<ProblemDetail> handleDuplicateRoomName(DuplicateRoomNameException ex,
+                                                                 HttpServletRequest request) {
+        LOG.warn("Nombre de sala repetido");
+        return build(HttpStatus.CONFLICT, "Nombre de sala repetido", ex.getMessage(), request);
+    }
+
+    /**
+     * Eliminación de una sala que tiene reservas de hoy o posteriores.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 409}
+     */
+    @ExceptionHandler(RoomHasFutureReservationsException.class)
+    public ResponseEntity<ProblemDetail> handleRoomHasFutureReservations(RoomHasFutureReservationsException ex,
+                                                                         HttpServletRequest request) {
+        LOG.warn("Sala con reservas futuras: {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, "Sala con reservas futuras", ex.getMessage(), request);
+    }
+
+    /**
      * Regla de negocio incumplida en un campo concreto (alta de reserva o filtro de búsqueda).
      *
      * @param ex      excepción capturada

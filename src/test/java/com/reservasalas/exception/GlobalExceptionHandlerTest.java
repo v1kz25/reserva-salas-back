@@ -98,7 +98,7 @@ class GlobalExceptionHandlerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"POST", "PUT", "DELETE", "PATCH"})
+    @ValueSource(strings = {"PUT", "DELETE", "PATCH"})
     void metodosNoPermitidosEnSalasDevuelven405ConInstanceYSinMetodoEnElCuerpo(String method) throws Exception {
         mvc.perform(request(HttpMethod.valueOf(method), "/api/salas"))
                 .andExpect(status().isMethodNotAllowed())

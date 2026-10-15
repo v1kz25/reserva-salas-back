@@ -31,4 +31,21 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM Room r WHERE r.id = :id")
     Optional<Room> findByIdForUpdate(@Param("id") Long id);
+
+    /**
+     * Comprueba si hay alguna sala con ese nombre normalizado.
+     *
+     * @param nameKey nombre normalizado con {@link com.reservasalas.entity.Room#normalizeName(String)}
+     * @return {@code true} si existe
+     */
+    boolean existsByNameKey(String nameKey);
+
+    /**
+     * Comprueba si hay alguna sala distinta de la indicada con ese nombre normalizado.
+     *
+     * @param nameKey nombre normalizado con {@link com.reservasalas.entity.Room#normalizeName(String)}
+     * @param id      identificador de la sala que se excluye de la comprobación
+     * @return {@code true} si existe otra sala con ese nombre
+     */
+    boolean existsByNameKeyAndIdNot(String nameKey, Long id);
 }
