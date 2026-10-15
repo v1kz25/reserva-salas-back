@@ -4,6 +4,8 @@ import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.entity.Reservation;
 import com.reservasalas.entity.Room;
+import com.reservasalas.entity.User;
+import com.reservasalas.exception.ForbiddenOperationException;
 import com.reservasalas.exception.InvalidDateRangeException;
 import com.reservasalas.exception.InvalidReservationException;
 import com.reservasalas.exception.OverlappingReservationException;
@@ -12,6 +14,8 @@ import com.reservasalas.exception.RoomNotFoundException;
 import com.reservasalas.repository.ReservationRepository;
 import com.reservasalas.repository.ReservationSpecifications;
 import com.reservasalas.repository.RoomRepository;
+import com.reservasalas.repository.UserRepository;
+import com.reservasalas.security.AuthenticatedUser;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
@@ -23,7 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Lógica de negocio de las reservas: consulta, alta sin solapamientos y cancelación.
+ * Lógica de negocio de las reservas: consulta, alta sin solapamientos y cancelación. El responsable
+ * de una reserva es siempre el usuario que la crea.
  */
 @Service
 public class ReservationService {
@@ -33,6 +38,7 @@ public class ReservationService {
 
     private final ReservationRepository reservationRepository;
     private final RoomRepository roomRepository;
+    private final UserRepository userRepository;
     private final Clock clock;
 
     /**
@@ -40,13 +46,16 @@ public class ReservationService {
      *
      * @param reservationRepository repositorio de reservas
      * @param roomRepository        repositorio de salas
+     * @param userRepository        repositorio de usuarios
      * @param clock                 reloj con el que se decide qué día es hoy
      */
     public ReservationService(ReservationRepository reservationRepository,
                               RoomRepository roomRepository,
+                              UserRepository userRepository,
                               Clock clock) {
         this.reservationRepository = reservationRepository;
         this.roomRepository = roomRepository;
+        this.userRepository = userRepository;
         this.clock = clock;
     }
 
@@ -91,7 +100,8 @@ public class ReservationService {
      * Crea una reserva comprobando las reglas de negocio. La sala se bloquea durante la
      * transacción para que dos altas simultáneas no puedan solaparse.
      *
-     * @param request datos de la reserva
+     * @param request     datos de la reserva
+     * @param currentUser usuario de la sesión, que queda como responsable
      * @return la reserva creada
      * @throws InvalidReservationException     si la hora de fin no es posterior a la de inicio
      *                                         o la fecha no es posterior a hoy
@@ -99,7 +109,7 @@ public class ReservationService {
      * @throws OverlappingReservationException si se solapa con otra reserva de la misma sala y día
      */
     @Transactional
-    public ReservationDto create(CreateReservationRequest request) {
+    public ReservationDto create(CreateReservationRequest request, AuthenticatedUser currentUser) {
         validateTimes(request);
 
         Room room = roomRepository.findByIdForUpdate(request.roomId())
@@ -111,8 +121,9 @@ public class ReservationService {
                     request.startTime(), request.endTime());
         }
 
+        User user = userRepository.getReferenceById(currentUser.getId());
         Reservation saved = reservationRepository.save(new Reservation(room, request.date(),
-                request.startTime(), request.endTime(), request.responsible(), request.reason()));
+                request.startTime(), request.endTime(), user, request.reason()));
         LOG.info("Reserva {} creada en la sala {} el {} de {} a {}", saved.getId(), room.getId(),
                 saved.getDate(), saved.getStartTime(), saved.getEndTime());
 
@@ -120,17 +131,26 @@ public class ReservationService {
     }
 
     /**
-     * Cancela una reserva borrándola, de modo que su franja queda libre para otras reservas.
+     * Cancela una reserva borrándola, de modo que su franja queda libre para otras reservas. Un
+     * usuario solo puede cancelar sus propias reservas; un administrador, cualquiera.
      *
-     * @param id identificador de la reserva
+     * @param id          identificador de la reserva
+     * @param currentUser usuario de la sesión
      * @throws ReservationNotFoundException si la reserva no existe o ya se había cancelado
+     * @throws ForbiddenOperationException  si la reserva es de otro usuario y no es administrador
      */
     @Transactional
-    public void cancel(Long id) {
+    public void cancel(Long id, AuthenticatedUser currentUser) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ReservationNotFoundException(id));
+        if (!currentUser.isAdmin() && !reservation.getUser().getId().equals(currentUser.getId())) {
+            LOG.warn("El usuario {} ha intentado cancelar la reserva {} de otro usuario", currentUser.getId(), id);
+            throw new ForbiddenOperationException("La reserva " + id + " es de otro usuario");
+        }
         if (reservationRepository.deleteByIdReturningCount(id) == 0) {
             throw new ReservationNotFoundException(id);
         }
-        LOG.info("Reserva {} cancelada", id);
+        LOG.info("Reserva {} cancelada por el usuario {}", id, currentUser.getId());
     }
 
     /**

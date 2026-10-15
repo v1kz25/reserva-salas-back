@@ -15,6 +15,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.reservasalas.config.SecurityConfig;
+import com.reservasalas.support.TestUsers;
 import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.exception.InvalidDateRangeException;
@@ -26,28 +28,39 @@ import com.reservasalas.service.ReservationService;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.web.context.WebApplicationContext;
 
 @WebMvcTest(ReservationController.class)
+@Import(SecurityConfig.class)
 class ReservationControllerTest {
 
     private static final String VALID = """
             {"salaId":1,"fecha":"2030-05-10","horaInicio":"10:00","horaFin":"11:00",
-             "responsable":"Ana","motivo":"Reunión"}""";
+             "motivo":"Reunión"}""";
 
     @Autowired
+    private WebApplicationContext context;
+
     private MockMvc mvc;
 
     @MockitoBean
     private ReservationService service;
+
+    @BeforeEach
+    void setUp() {
+        mvc = TestUsers.mockMvcAs(context, TestUsers.ANA);
+    }
 
     private ResultActions enviar(String body) throws Exception {
         return mvc.perform(post("/api/reservas").contentType(MediaType.APPLICATION_JSON).content(body));
@@ -60,8 +73,8 @@ class ReservationControllerTest {
 
     @Test
     void postCrea201ConLocationYHorasHHmm() throws Exception {
-        when(service.create(any())).thenReturn(new ReservationDto(7L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), "Ana", "Reunión"));
+        when(service.create(any(), any())).thenReturn(new ReservationDto(7L, 1L, LocalDate.of(2030, 5, 10),
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión"));
 
         enviar(VALID)
                 .andExpect(status().isCreated())
@@ -73,12 +86,12 @@ class ReservationControllerTest {
                 .andExpect(jsonPath("$.horaFin").value("11:00"));
 
         verify(service).create(new CreateReservationRequest(1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), "Ana", "Reunión"));
+                LocalTime.of(10, 0), LocalTime.of(11, 0), "Reunión"), TestUsers.ANA);
     }
 
     @Test
     void solapamientoDevuelve409ProblemDetail() throws Exception {
-        when(service.create(any())).thenThrow(new OverlappingReservationException(1L,
+        when(service.create(any(), any())).thenThrow(new OverlappingReservationException(1L,
                 LocalDate.of(2030, 5, 10), LocalTime.of(10, 0), LocalTime.of(11, 0)));
 
         enviar(VALID)
@@ -91,7 +104,7 @@ class ReservationControllerTest {
 
     @Test
     void salaInexistenteDevuelve404ProblemDetail() throws Exception {
-        when(service.create(any())).thenThrow(new RoomNotFoundException(99L));
+        when(service.create(any(), any())).thenThrow(new RoomNotFoundException(99L));
 
         enviar(VALID)
                 .andExpect(status().isNotFound())
@@ -101,7 +114,7 @@ class ReservationControllerTest {
 
     @Test
     void reglaDeNegocioInvalidaDevuelve400ConErrores() throws Exception {
-        when(service.create(any())).thenThrow(new InvalidReservationException("horaFin", "debe ser posterior a horaInicio"));
+        when(service.create(any(), any())).thenThrow(new InvalidReservationException("horaFin", "debe ser posterior a horaInicio"));
 
         enviar(body("horaFin", "\"10:00\""))
                 .andExpect(status().isBadRequest())
@@ -115,35 +128,31 @@ class ReservationControllerTest {
         enviar("{}")
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.errores.length()").value(6))
+                .andExpect(jsonPath("$.errores.length()").value(5))
                 .andExpect(jsonPath("$.errores[?(@.campo=='salaId')]").exists())
                 .andExpect(jsonPath("$.errores[?(@.campo=='fecha')]").exists())
                 .andExpect(jsonPath("$.errores[?(@.campo=='horaInicio')]").exists())
                 .andExpect(jsonPath("$.errores[?(@.campo=='horaFin')]").exists())
-                .andExpect(jsonPath("$.errores[?(@.campo=='responsable')]").exists())
+                .andExpect(jsonPath("$.errores[?(@.campo=='responsable')]").doesNotExist())
                 .andExpect(jsonPath("$.errores[?(@.campo=='motivo')]").exists());
     }
 
     @Test
-    void responsableYMotivoEnBlancoDan400() throws Exception {
-        enviar(body("responsable", "\"   \"").replace("\"Reunión\"", "\"\""))
+    void motivoEnBlancoDa400() throws Exception {
+        enviar(VALID.replace("\"Reunión\"", "\"   \""))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errores[?(@.campo=='responsable')]").exists())
                 .andExpect(jsonPath("$.errores[?(@.campo=='motivo')]").exists());
     }
 
     @Test
-    void responsableDe101CaracteresDa400() throws Exception {
-        enviar(body("responsable", "\"" + "a".repeat(101) + "\""))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errores[0].campo").value("responsable"));
-    }
-
-    @Test
-    void responsableDe100CaracteresEsValido() throws Exception {
-        when(service.create(any())).thenReturn(new ReservationDto(1L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), "a".repeat(100), "Reunión"));
-        enviar(body("responsable", "\"" + "a".repeat(100) + "\"")).andExpect(status().isCreated());
+    void responsableEnLaPeticionSeIgnora() throws Exception {
+        when(service.create(any(), any())).thenReturn(new ReservationDto(1L, 1L, LocalDate.of(2030, 5, 10),
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión"));
+        enviar(VALID.replace("\"motivo\"", "\"responsable\":\"Otro\",\"motivo\""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.responsable").value("Ana"));
+        verify(service).create(new CreateReservationRequest(1L, LocalDate.of(2030, 5, 10),
+                LocalTime.of(10, 0), LocalTime.of(11, 0), "Reunión"), TestUsers.ANA);
     }
 
     @Test
@@ -151,8 +160,8 @@ class ReservationControllerTest {
         enviar(body("motivo", "\"" + "m".repeat(256) + "\""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errores[0].campo").value("motivo"));
-        when(service.create(any())).thenReturn(new ReservationDto(1L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), "Ana", "m".repeat(255)));
+        when(service.create(any(), any())).thenReturn(new ReservationDto(1L, 1L, LocalDate.of(2030, 5, 10),
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "m".repeat(255)));
         enviar(body("motivo", "\"" + "m".repeat(255) + "\"")).andExpect(status().isCreated());
     }
 
@@ -182,7 +191,7 @@ class ReservationControllerTest {
     @Test
     void getSinFiltrosDelegaConNulos() throws Exception {
         when(service.find(null, null, null)).thenReturn(List.of(new ReservationDto(1L, 1L,
-                LocalDate.of(2030, 5, 10), LocalTime.of(9, 5), LocalTime.of(10, 0), "Ana", "x")));
+                LocalDate.of(2030, 5, 10), LocalTime.of(9, 5), LocalTime.of(10, 0), 1L, "Ana", "x")));
 
         mvc.perform(get("/api/reservas"))
                 .andExpect(status().isOk())
@@ -280,7 +289,7 @@ class ReservationControllerTest {
         LocalDate from = LocalDate.of(2030, 5, 10);
         LocalDate to = LocalDate.of(2030, 5, 10);
         when(service.find(2L, from, to)).thenReturn(List.of(new ReservationDto(5L, 2L, from,
-                LocalTime.of(9, 0), LocalTime.of(10, 0), "Ana", "x")));
+                LocalTime.of(9, 0), LocalTime.of(10, 0), 1L, "Ana", "x")));
 
         mvc.perform(get("/api/reservas").param("salaId", "2")
                         .param("fechaDesde", "2030-05-10").param("fechaHasta", "2030-05-10"))
@@ -291,7 +300,7 @@ class ReservationControllerTest {
 
     @Test
     void reservarParaHoyDa400ConCampoFecha() throws Exception {
-        when(service.create(any())).thenThrow(new InvalidReservationException("fecha", "debe ser posterior a hoy"));
+        when(service.create(any(), any())).thenThrow(new InvalidReservationException("fecha", "debe ser posterior a hoy"));
 
         enviar(VALID)
                 .andExpect(status().isBadRequest())
@@ -302,7 +311,7 @@ class ReservationControllerTest {
     @Test
     void getPorIdDevuelve200ConLaReserva() throws Exception {
         when(service.findById(7L)).thenReturn(new ReservationDto(7L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), "Ana", "Reunión"));
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión"));
 
         mvc.perform(get("/api/reservas/7"))
                 .andExpect(status().isOk())
@@ -329,17 +338,17 @@ class ReservationControllerTest {
 
     @Test
     void deleteDevuelve204SinCuerpoYDelegaEnElServicio() throws Exception {
-        doNothing().when(service).cancel(7L);
+        doNothing().when(service).cancel(7L, TestUsers.ANA);
 
         mvc.perform(delete("/api/reservas/7"))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
-        verify(service).cancel(7L);
+        verify(service).cancel(7L, TestUsers.ANA);
     }
 
     @Test
     void deleteInexistenteDevuelve404ProblemDetail() throws Exception {
-        doThrow(new ReservationNotFoundException(99L)).when(service).cancel(99L);
+        doThrow(new ReservationNotFoundException(99L)).when(service).cancel(99L, TestUsers.ANA);
 
         mvc.perform(delete("/api/reservas/99"))
                 .andExpect(status().isNotFound())

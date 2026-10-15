@@ -3,10 +3,15 @@ package com.reservasalas.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.reservasalas.entity.Reservation;
+import com.reservasalas.entity.Role;
 import com.reservasalas.entity.Room;
+import com.reservasalas.entity.User;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +29,10 @@ class ReservationRepositoryTest {
     private ReservationRepository reservations;
     @Autowired
     private RoomRepository rooms;
+    @Autowired
+    private UserRepository users;
+
+    private final Map<String, User> usersByName = new HashMap<>();
 
     private Room roomA;
     private Room roomB;
@@ -32,7 +41,13 @@ class ReservationRepositoryTest {
     void setUp() {
         roomA = rooms.save(new Room("Sala A", 8, 1));
         roomB = rooms.save(new Room("Sala B", 10, 2));
-        reservations.save(new Reservation(roomA, DAY, LocalTime.of(10, 0), LocalTime.of(11, 0), "Ana", "x"));
+        reservations.save(new Reservation(roomA, DAY, LocalTime.of(10, 0), LocalTime.of(11, 0), user("Ana"), "x"));
+    }
+
+    /** Usuario con ese nombre, que hace de responsable de las reservas. */
+    private User user(String name) {
+        return usersByName.computeIfAbsent(name, n -> users.save(
+                new User(n.toLowerCase(Locale.ROOT) + "@example.com", n, "hash", Role.USER)));
     }
 
     private boolean overlaps(Room room, LocalDate date, String start, String end) {
@@ -86,26 +101,26 @@ class ReservationRepositoryTest {
 
     @Test
     void filtrosYOrdenPorFechaYHoraInicio() {
-        reservations.save(new Reservation(roomB, DAY, LocalTime.of(8, 0), LocalTime.of(9, 0), "Luis", "y"));
-        reservations.save(new Reservation(roomA, DAY.minusDays(1), LocalTime.of(18, 0), LocalTime.of(19, 0), "Eva", "z"));
+        reservations.save(new Reservation(roomB, DAY, LocalTime.of(8, 0), LocalTime.of(9, 0), user("Luis"), "y"));
+        reservations.save(new Reservation(roomA, DAY.minusDays(1), LocalTime.of(18, 0), LocalTime.of(19, 0), user("Eva"), "z"));
         Sort sort = Sort.by("date", "startTime");
 
         List<Reservation> all = reservations.findAll(
                 Specification.allOf(ReservationSpecifications.hasRoom(null), ReservationSpecifications.onOrAfter(null),
                         ReservationSpecifications.onOrBefore(null)), sort);
-        assertThat(all).extracting(Reservation::getResponsible).containsExactly("Eva", "Luis", "Ana");
+        assertThat(all).extracting(r -> r.getUser().getName()).containsExactly("Eva", "Luis", "Ana");
 
         List<Reservation> byRoom = reservations.findAll(ReservationSpecifications.hasRoom(roomA.getId()), sort);
-        assertThat(byRoom).extracting(Reservation::getResponsible).containsExactly("Eva", "Ana");
+        assertThat(byRoom).extracting(r -> r.getUser().getName()).containsExactly("Eva", "Ana");
 
         List<Reservation> byDate = reservations.findAll(Specification.allOf(
                 ReservationSpecifications.onOrAfter(DAY), ReservationSpecifications.onOrBefore(DAY)), sort);
-        assertThat(byDate).extracting(Reservation::getResponsible).containsExactly("Luis", "Ana");
+        assertThat(byDate).extracting(r -> r.getUser().getName()).containsExactly("Luis", "Ana");
 
         List<Reservation> both = reservations.findAll(Specification.allOf(
                 ReservationSpecifications.hasRoom(roomA.getId()), ReservationSpecifications.onOrAfter(DAY),
                 ReservationSpecifications.onOrBefore(DAY)), sort);
-        assertThat(both).extracting(Reservation::getResponsible).containsExactly("Ana");
+        assertThat(both).extracting(r -> r.getUser().getName()).containsExactly("Ana");
     }
 
     @Test
@@ -117,12 +132,12 @@ class ReservationRepositoryTest {
 
     private List<String> responsables(Specification<Reservation> spec) {
         return reservations.findAll(spec, Sort.by("date", "startTime")).stream()
-                .map(Reservation::getResponsible).toList();
+                .map(r -> r.getUser().getName()).toList();
     }
 
     private void guardarTresDias() {
-        reservations.save(new Reservation(roomA, DAY.minusDays(1), LocalTime.of(9, 0), LocalTime.of(10, 0), "Antes", "x"));
-        reservations.save(new Reservation(roomA, DAY.plusDays(1), LocalTime.of(9, 0), LocalTime.of(10, 0), "Despues", "x"));
+        reservations.save(new Reservation(roomA, DAY.minusDays(1), LocalTime.of(9, 0), LocalTime.of(10, 0), user("Antes"), "x"));
+        reservations.save(new Reservation(roomA, DAY.plusDays(1), LocalTime.of(9, 0), LocalTime.of(10, 0), user("Despues"), "x"));
     }
 
     @Test
@@ -151,7 +166,7 @@ class ReservationRepositoryTest {
     @Test
     void rangoCombinadoConSalaFiltraPorAmbos() {
         guardarTresDias();
-        reservations.save(new Reservation(roomB, DAY, LocalTime.of(8, 0), LocalTime.of(9, 0), "Luis", "y"));
+        reservations.save(new Reservation(roomB, DAY, LocalTime.of(8, 0), LocalTime.of(9, 0), user("Luis"), "y"));
         assertThat(responsables(Specification.allOf(ReservationSpecifications.hasRoom(roomB.getId()),
                 ReservationSpecifications.onOrAfter(DAY.minusDays(1)),
                 ReservationSpecifications.onOrBefore(DAY.plusDays(1))))).containsExactly("Luis");
@@ -186,7 +201,7 @@ class ReservationRepositoryTest {
     @Test
     void deleteByIdReturningCountSoloBorraLaIndicadaYLiberaLaFranja() {
         Long other = reservations.save(new Reservation(roomA, DAY, LocalTime.of(12, 0), LocalTime.of(13, 0),
-                "Luis", "y")).getId();
+                user("Luis"), "y")).getId();
         Long first = reservations.findAll().stream()
                 .filter(r -> !r.getId().equals(other)).findFirst().orElseThrow().getId();
         assertThat(overlaps(roomA, DAY, "10:00", "11:00")).isTrue();

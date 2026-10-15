@@ -14,7 +14,8 @@ import java.time.LocalTime;
  * @param date        día de la reserva
  * @param startTime   hora de inicio, en formato {@code HH:mm}
  * @param endTime     hora de fin, en formato {@code HH:mm}
- * @param responsible persona responsable
+ * @param userId      identificador del usuario que hizo la reserva
+ * @param responsible nombre del usuario que hizo la reserva
  * @param reason      motivo de la reserva
  */
 public record ReservationDto(
@@ -23,11 +24,14 @@ public record ReservationDto(
         @JsonProperty("fecha") LocalDate date,
         @JsonProperty("horaInicio") @JsonFormat(pattern = "HH:mm") LocalTime startTime,
         @JsonProperty("horaFin") @JsonFormat(pattern = "HH:mm") LocalTime endTime,
+        @JsonProperty("usuarioId") Long userId,
         @JsonProperty("responsable") String responsible,
         @JsonProperty("motivo") String reason) {
 
     /**
-     * Construye el DTO a partir de la entidad. Solo lee el id de la sala, así que no la inicializa.
+     * Construye el DTO a partir de la entidad. Solo lee el id de la sala, así que no la inicializa;
+     * el usuario sí se inicializa para obtener su nombre, así que debe llamarse dentro de la
+     * transacción (o con el usuario ya cargado).
      *
      * @param reservation reserva persistida
      * @return DTO equivalente
@@ -39,7 +43,8 @@ public record ReservationDto(
                 reservation.getDate(),
                 reservation.getStartTime(),
                 reservation.getEndTime(),
-                reservation.getResponsible(),
+                reservation.getUser().getId(),
+                reservation.getUser().getName(),
                 reservation.getReason());
     }
 }

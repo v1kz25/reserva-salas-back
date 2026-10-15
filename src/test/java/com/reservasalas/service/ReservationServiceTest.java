@@ -13,7 +13,10 @@ import static org.mockito.Mockito.when;
 import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.entity.Reservation;
+import com.reservasalas.entity.Role;
 import com.reservasalas.entity.Room;
+import com.reservasalas.entity.User;
+import com.reservasalas.exception.ForbiddenOperationException;
 import com.reservasalas.exception.InvalidDateRangeException;
 import com.reservasalas.exception.InvalidReservationException;
 import com.reservasalas.exception.OverlappingReservationException;
@@ -21,6 +24,8 @@ import com.reservasalas.exception.ReservationNotFoundException;
 import com.reservasalas.exception.RoomNotFoundException;
 import com.reservasalas.repository.ReservationRepository;
 import com.reservasalas.repository.RoomRepository;
+import com.reservasalas.repository.UserRepository;
+import com.reservasalas.support.TestUsers;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -49,44 +54,62 @@ class ReservationServiceTest {
     private ReservationRepository reservationRepository;
     @Mock
     private RoomRepository roomRepository;
+    @Mock
+    private UserRepository userRepository;
 
     private ReservationService service;
     private Room room;
+    private User ana;
 
     @BeforeEach
     void setUp() {
-        service = new ReservationService(reservationRepository, roomRepository, CLOCK);
+        service = new ReservationService(reservationRepository, roomRepository, userRepository, CLOCK);
         room = new Room("Sala A", 8, 1);
+        ana = new User("ana@example.com", "Ana", "hash", Role.USER);
+        ReflectionTestUtils.setField(ana, "id", TestUsers.ANA.getId());
     }
 
     private CreateReservationRequest request(LocalDate date, String start, String end) {
-        return new CreateReservationRequest(1L, date, LocalTime.parse(start), LocalTime.parse(end),
-                "Ana", "Reunión");
+        return new CreateReservationRequest(1L, date, LocalTime.parse(start), LocalTime.parse(end), "Reunión");
     }
 
     private void roomExists() {
         when(roomRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(room));
     }
 
+    private void userExists() {
+        when(userRepository.getReferenceById(TestUsers.ANA.getId())).thenReturn(ana);
+    }
+
+    private ReservationDto create(CreateReservationRequest request) {
+        return service.create(request, TestUsers.ANA);
+    }
+
+    private Reservation reservationOf(User user) {
+        return new Reservation(room, TODAY.plusDays(1), LocalTime.of(10, 0), LocalTime.of(11, 0), user, "Reunión");
+    }
+
     @Test
     void creaReservaFutura() {
         roomExists();
+        userExists();
         LocalDate date = TODAY.plusDays(1);
         when(reservationRepository.existsOverlapping(any(), eq(date), any(), any())).thenReturn(false);
         when(reservationRepository.save(any(Reservation.class))).thenAnswer(i -> i.getArgument(0));
 
-        ReservationDto dto = service.create(request(date, "10:00", "11:00"));
+        ReservationDto dto = create(request(date, "10:00", "11:00"));
 
         assertThat(dto.date()).isEqualTo(date);
         assertThat(dto.startTime()).isEqualTo(LocalTime.of(10, 0));
         assertThat(dto.endTime()).isEqualTo(LocalTime.of(11, 0));
+        assertThat(dto.userId()).isEqualTo(TestUsers.ANA.getId());
         assertThat(dto.responsible()).isEqualTo("Ana");
         assertThat(dto.reason()).isEqualTo("Reunión");
     }
 
     @Test
     void hoyLanzaErrorEnFechaAunqueLaHoraSeaFutura() {
-        assertThatThrownBy(() -> service.create(request(TODAY, "18:00", "19:00")))
+        assertThatThrownBy(() -> create(request(TODAY, "18:00", "19:00")))
                 .isInstanceOfSatisfying(InvalidReservationException.class,
                         e -> assertThat(e.getField()).isEqualTo("fecha"));
         verify(reservationRepository, never()).save(any());
@@ -94,7 +117,7 @@ class ReservationServiceTest {
 
     @Test
     void fechaAnteriorAHoyLanzaErrorEnFecha() {
-        assertThatThrownBy(() -> service.create(request(TODAY.minusDays(1), "10:00", "11:00")))
+        assertThatThrownBy(() -> create(request(TODAY.minusDays(1), "10:00", "11:00")))
                 .isInstanceOfSatisfying(InvalidReservationException.class,
                         e -> assertThat(e.getField()).isEqualTo("fecha"));
         verify(reservationRepository, never()).save(any());
@@ -102,7 +125,7 @@ class ReservationServiceTest {
 
     @Test
     void horaFinIgualAInicioLanzaError() {
-        assertThatThrownBy(() -> service.create(request(TODAY.plusDays(1), "10:00", "10:00")))
+        assertThatThrownBy(() -> create(request(TODAY.plusDays(1), "10:00", "10:00")))
                 .isInstanceOfSatisfying(InvalidReservationException.class,
                         e -> assertThat(e.getField()).isEqualTo("horaFin"));
         verify(reservationRepository, never()).save(any());
@@ -110,7 +133,7 @@ class ReservationServiceTest {
 
     @Test
     void horaFinAnteriorAInicioLanzaError() {
-        assertThatThrownBy(() -> service.create(request(TODAY.plusDays(1), "11:00", "10:00")))
+        assertThatThrownBy(() -> create(request(TODAY.plusDays(1), "11:00", "10:00")))
                 .isInstanceOf(InvalidReservationException.class);
     }
 
@@ -118,7 +141,7 @@ class ReservationServiceTest {
     void salaInexistenteLanza404() {
         when(roomRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create(request(TODAY.plusDays(1), "10:00", "11:00")))
+        assertThatThrownBy(() -> create(request(TODAY.plusDays(1), "10:00", "11:00")))
                 .isInstanceOf(RoomNotFoundException.class);
         verify(reservationRepository, never()).save(any());
     }
@@ -130,7 +153,7 @@ class ReservationServiceTest {
         when(reservationRepository.existsOverlapping(any(), eq(date),
                 eq(LocalTime.of(10, 30)), eq(LocalTime.of(11, 30)))).thenReturn(true);
 
-        assertThatThrownBy(() -> service.create(request(date, "10:30", "11:30")))
+        assertThatThrownBy(() -> create(request(date, "10:30", "11:30")))
                 .isInstanceOf(OverlappingReservationException.class);
         verify(reservationRepository, never()).save(any());
     }
@@ -138,10 +161,11 @@ class ReservationServiceTest {
     @Test
     void creaReservaParaManana() {
         roomExists();
+        userExists();
         LocalDate tomorrow = TODAY.plusDays(1);
         when(reservationRepository.save(any(Reservation.class))).thenAnswer(i -> i.getArgument(0));
 
-        assertThat(service.create(request(tomorrow, "10:00", "11:00")).date()).isEqualTo(tomorrow);
+        assertThat(create(request(tomorrow, "10:00", "11:00")).date()).isEqualTo(tomorrow);
     }
 
     @Test
@@ -175,8 +199,7 @@ class ReservationServiceTest {
 
     @Test
     void findByIdDevuelveElDtoDeLaReserva() {
-        Reservation reservation = new Reservation(room, TODAY.plusDays(1), LocalTime.of(10, 0),
-                LocalTime.of(11, 0), "Ana", "Reunión");
+        Reservation reservation = reservationOf(ana);
         ReflectionTestUtils.setField(room, "id", 1L);
         when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservation));
 
@@ -200,19 +223,51 @@ class ReservationServiceTest {
     }
 
     @Test
-    void cancelBorraLaReservaExistente() {
+    void cancelBorraLaReservaPropia() {
+        when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservationOf(ana)));
         when(reservationRepository.deleteByIdReturningCount(5L)).thenReturn(1);
 
-        service.cancel(5L);
+        service.cancel(5L, TestUsers.ANA);
 
         verify(reservationRepository).deleteByIdReturningCount(5L);
     }
 
     @Test
-    void cancelInexistenteOYaCanceladaLanzaReservationNotFound() {
+    void cancelDeReservaAjenaSinSerAdminLanzaForbiddenYNoBorra() {
+        User otro = new User("otro@example.com", "Otro", "hash", Role.USER);
+        ReflectionTestUtils.setField(otro, "id", 99L);
+        when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservationOf(otro)));
+
+        assertThatThrownBy(() -> service.cancel(5L, TestUsers.ANA))
+                .isInstanceOf(ForbiddenOperationException.class);
+        verify(reservationRepository, never()).deleteByIdReturningCount(any());
+    }
+
+    @Test
+    void cancelDeReservaAjenaSiendoAdminLaBorra() {
+        when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservationOf(ana)));
+        when(reservationRepository.deleteByIdReturningCount(5L)).thenReturn(1);
+
+        service.cancel(5L, TestUsers.ADMIN);
+
+        verify(reservationRepository).deleteByIdReturningCount(5L);
+    }
+
+    @Test
+    void cancelInexistenteLanzaReservationNotFound() {
+        when(reservationRepository.findById(5L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.cancel(5L, TestUsers.ANA))
+                .isInstanceOf(ReservationNotFoundException.class)
+                .hasMessageContaining("5");
+    }
+
+    @Test
+    void cancelYaCanceladaEntreLecturaYBorradoLanzaReservationNotFound() {
+        when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservationOf(ana)));
         when(reservationRepository.deleteByIdReturningCount(5L)).thenReturn(0);
 
-        assertThatThrownBy(() -> service.cancel(5L))
+        assertThatThrownBy(() -> service.cancel(5L, TestUsers.ANA))
                 .isInstanceOf(ReservationNotFoundException.class)
                 .hasMessageContaining("5");
     }

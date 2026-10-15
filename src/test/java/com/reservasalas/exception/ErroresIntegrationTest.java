@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.reservasalas.support.TestUsers;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,6 +24,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.context.WebApplicationContext;
 
 /**
  * Errores de infraestructura (404, 405, 415) con la aplicación completa: recursos estáticos reales,
@@ -35,7 +38,15 @@ import org.springframework.test.web.servlet.MockMvc;
 class ErroresIntegrationTest {
 
     @Autowired
+    private WebApplicationContext context;
+
     private MockMvc mvc;
+
+    @BeforeEach
+    void setUp() {
+        // Administrador: los métodos de escritura sobre salas exigen ese rol antes de llegar al 405/404.
+        mvc = TestUsers.mockMvcAs(context, TestUsers.ADMIN);
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"/api/no-existe", "/api/salas/1/otra", "/api/reservas/7/otra", "/no-existe", "/api/"})
