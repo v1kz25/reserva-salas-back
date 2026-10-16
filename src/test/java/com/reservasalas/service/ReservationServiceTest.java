@@ -23,6 +23,7 @@ import com.reservasalas.exception.InvalidReservationException;
 import com.reservasalas.exception.OverlappingReservationException;
 import com.reservasalas.exception.ReservationNotFoundException;
 import com.reservasalas.exception.RoomNotFoundException;
+import com.reservasalas.repository.InvitationRepository;
 import com.reservasalas.repository.ReservationRepository;
 import com.reservasalas.repository.RoomRepository;
 import com.reservasalas.repository.UserRepository;
@@ -60,6 +61,8 @@ class ReservationServiceTest {
     private RoomRepository roomRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private InvitationRepository invitationRepository;
 
     private ReservationService service;
     private Room room;
@@ -67,7 +70,8 @@ class ReservationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ReservationService(reservationRepository, roomRepository, userRepository, new CurrentTimeZone(CLOCK));
+        service = new ReservationService(reservationRepository, roomRepository, userRepository, invitationRepository,
+                new CurrentTimeZone(CLOCK));
         room = new Room("Sala A", 8, 1);
         ana = new User("ana@example.com", "Ana", "hash", Role.USER, Instant.EPOCH);
         ReflectionTestUtils.setField(ana, "id", TestUsers.ANA.getId());
@@ -174,7 +178,7 @@ class ReservationServiceTest {
 
     @Test
     void findConRangoInvertidoLanzaErrorEnFechaHastaSinConsultar() {
-        assertThatThrownBy(() -> service.find(null, TODAY.plusDays(5), TODAY.plusDays(4), 0, 20))
+        assertThatThrownBy(() -> service.find(null, TODAY.plusDays(5), TODAY.plusDays(4), false, 0, 20, TestUsers.ANA))
                 .isInstanceOfSatisfying(InvalidDateRangeException.class,
                         e -> assertThat(e.getField()).isEqualTo("fechaHasta"));
         verifyNoInteractions(reservationRepository);
@@ -184,10 +188,10 @@ class ReservationServiceTest {
     void findAceptaMismaFechaEnAmbasPuntasYSoloUnaDeEllas() {
         when(reservationRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        assertThat(service.find(null, TODAY, TODAY, 0, 20).content()).isEmpty();
-        assertThat(service.find(null, TODAY, null, 0, 20).content()).isEmpty();
-        assertThat(service.find(null, null, TODAY, 0, 20).content()).isEmpty();
-        assertThat(service.find(1L, TODAY, TODAY.plusDays(1), 0, 20).content()).isEmpty();
+        assertThat(service.find(null, TODAY, TODAY, false, 0, 20, TestUsers.ANA).content()).isEmpty();
+        assertThat(service.find(null, TODAY, null, false, 0, 20, TestUsers.ANA).content()).isEmpty();
+        assertThat(service.find(null, null, TODAY, false, 0, 20, TestUsers.ANA).content()).isEmpty();
+        assertThat(service.find(1L, TODAY, TODAY.plusDays(1), false, 0, 20, TestUsers.ANA).content()).isEmpty();
         verify(reservationRepository, times(4)).findAll(any(Specification.class), any(Pageable.class));
     }
 
@@ -196,7 +200,7 @@ class ReservationServiceTest {
         Pageable expected = PageRequest.of(0, 20, Sort.by("date", "startTime", "id"));
         when(reservationRepository.findAll(any(Specification.class), eq(expected))).thenReturn(Page.empty(expected));
 
-        service.find(null, null, null, 0, 20);
+        service.find(null, null, null, false, 0, 20, TestUsers.ANA);
 
         verify(reservationRepository).findAll(any(Specification.class), eq(expected));
     }
@@ -207,7 +211,7 @@ class ReservationServiceTest {
         ReflectionTestUtils.setField(room, "id", 1L);
         when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservation));
 
-        ReservationDto dto = service.findById(5L);
+        ReservationDto dto = service.findById(5L, TestUsers.ANA);
 
         assertThat(dto.roomId()).isEqualTo(1L);
         assertThat(dto.date()).isEqualTo(TODAY.plusDays(1));
@@ -221,7 +225,7 @@ class ReservationServiceTest {
     void findByIdInexistenteLanzaReservationNotFound() {
         when(reservationRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.findById(99L))
+        assertThatThrownBy(() -> service.findById(99L, TestUsers.ANA))
                 .isInstanceOf(ReservationNotFoundException.class)
                 .hasMessageContaining("99");
     }

@@ -1,6 +1,7 @@
 package com.reservasalas.repository;
 
 import com.reservasalas.entity.Reservation;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -12,6 +13,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -57,6 +59,18 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long>,
     Optional<Reservation> findById(Long id);
 
     /**
+     * Busca una reserva y la bloquea para escritura hasta el fin de la transacción. Sirve para
+     * serializar las operaciones sobre sus invitaciones, de modo que el aforo se respete aunque
+     * lleguen invitaciones o respuestas simultáneas.
+     *
+     * @param id identificador de la reserva
+     * @return la reserva bloqueada, si existe
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from Reservation r where r.id = :id")
+    Optional<Reservation> findByIdForUpdate(@Param("id") Long id);
+
+    /**
      * Comprueba si hay alguna reserva de la sala ese día que se solape con la franja indicada.
      * Dos franjas solapan si {@code inicioA < finB} y {@code inicioB < finA}; las contiguas no solapan.
      *
@@ -80,7 +94,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long>,
 
     /**
      * Borra la reserva con una única sentencia, de forma que dos cancelaciones simultáneas de la
-     * misma reserva no fallen: la segunda simplemente no borra nada.
+     * misma reserva no fallen: la segunda simplemente no borra nada. Sus invitaciones las borra a la
+     * vez la base de datos ({@code ON DELETE CASCADE}).
      *
      * <p>Ojo: {@code clearAutomatically = true} vacía todo el contexto de persistencia. Si se llama
      * dentro de una transacción que ya tiene otras entidades cargadas, esas entidades quedan
@@ -110,8 +125,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long>,
     /**
      * Borra todas las reservas de una sala con una única sentencia.
      *
-     * <p>Cuando existan las invitaciones a reservas (#7), habrá que borrar antes las invitaciones
-     * de estas reservas.
+     * <p>Las invitaciones de estas reservas las borra a la vez la base de datos, porque su clave
+     * ajena hacia la reserva lleva {@code ON DELETE CASCADE}.
      *
      * <p>Ojo: {@code clearAutomatically = true} vacía todo el contexto de persistencia; las entidades
      * cargadas antes quedan desvinculadas.

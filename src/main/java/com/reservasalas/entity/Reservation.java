@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 /**
@@ -69,6 +70,28 @@ public class Reservation {
         this.endTime = endTime;
         this.user = user;
         this.reason = reason;
+    }
+
+    /**
+     * Indica si el usuario es el organizador de la reserva, es decir, quien la hizo. No inicializa
+     * el usuario.
+     *
+     * @param userId identificador del usuario
+     * @return {@code true} si la reserva es suya
+     */
+    public boolean isOrganizedBy(Long userId) {
+        return user.getId().equals(userId);
+    }
+
+    /**
+     * Indica si la reserva ya ha terminado: su día y hora de fin no son posteriores al instante
+     * indicado. Una reserva en curso aún no ha terminado.
+     *
+     * @param now fecha y hora actuales en la zona horaria vigente
+     * @return {@code true} si la reserva ya ha pasado
+     */
+    public boolean hasEndedBy(LocalDateTime now) {
+        return !LocalDateTime.of(date, endTime).isAfter(now);
     }
 
     /**

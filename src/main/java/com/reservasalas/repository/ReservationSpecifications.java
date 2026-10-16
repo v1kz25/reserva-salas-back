@@ -1,5 +1,7 @@
 package com.reservasalas.repository;
 
+import com.reservasalas.entity.Invitation;
+import com.reservasalas.entity.InvitationStatus;
 import com.reservasalas.entity.Reservation;
 import java.time.LocalDate;
 import org.springframework.data.jpa.domain.Specification;
@@ -49,5 +51,24 @@ public final class ReservationSpecifications {
             return Specification.unrestricted();
         }
         return (root, query, cb) -> cb.lessThanOrEqualTo(root.get("date"), to);
+    }
+
+    /**
+     * Filtra las reservas en las que participa el usuario: las que organiza y aquellas en las que
+     * tiene una invitación pendiente o aceptada.
+     *
+     * @param userId identificador del usuario
+     * @return especificación aplicable
+     */
+    public static Specification<Reservation> organizedByOrInvited(Long userId) {
+        return (root, query, cb) -> {
+            var invited = query.subquery(Long.class);
+            var invitation = invited.from(Invitation.class);
+            invited.select(invitation.get("id"))
+                    .where(cb.equal(invitation.get("reservation"), root),
+                            cb.equal(invitation.get("user").get("id"), userId),
+                            cb.notEqual(invitation.get("status"), InvitationStatus.REJECTED));
+            return cb.or(cb.equal(root.get("user").get("id"), userId), cb.exists(invited));
+        };
     }
 }

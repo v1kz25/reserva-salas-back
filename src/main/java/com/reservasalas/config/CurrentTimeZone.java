@@ -2,6 +2,7 @@ package com.reservasalas.config;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
@@ -79,6 +80,15 @@ public class CurrentTimeZone {
      */
     public LocalDate today() {
         return LocalDate.ofInstant(clock.instant(), zone);
+    }
+
+    /**
+     * Fecha y hora actuales en la zona horaria vigente, según el reloj de la aplicación.
+     *
+     * @return la fecha y hora locales de ahora
+     */
+    public LocalDateTime now() {
+        return LocalDateTime.ofInstant(clock.instant(), zone);
     }
 
     /**
