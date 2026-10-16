@@ -7,6 +7,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import org.hibernate.StaleStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.ConversionNotSupportedException;
@@ -189,6 +190,48 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Solicitud de amistad inexistente, ya resuelta o ajena.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 404}
+     */
+    @ExceptionHandler(FriendRequestNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleFriendRequestNotFound(FriendRequestNotFoundException ex,
+                                                                     HttpServletRequest request) {
+        LOG.warn("Solicitud de amistad no encontrada: {}", ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, "Solicitud de amistad no encontrada", ex.getMessage(), request);
+    }
+
+    /**
+     * Eliminación de una amistad que no existe.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 404}
+     */
+    @ExceptionHandler(FriendshipNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleFriendshipNotFound(FriendshipNotFoundException ex,
+                                                                  HttpServletRequest request) {
+        LOG.warn("Amistad no encontrada: {}", ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, "Amistad no encontrada", ex.getMessage(), request);
+    }
+
+    /**
+     * Solicitud de amistad a alguien que ya es amigo o con quien ya hay una solicitud pendiente.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 409}
+     */
+    @ExceptionHandler(FriendshipConflictException.class)
+    public ResponseEntity<ProblemDetail> handleFriendshipConflict(FriendshipConflictException ex,
+                                                                  HttpServletRequest request) {
+        LOG.warn("Solicitud de amistad en conflicto: {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, "Amistad o solicitud ya existente", ex.getMessage(), request);
+    }
+
+    /**
      * Cambio que dejaría la aplicación sin ningún administrador activo.
      *
      * @param ex      excepción capturada
@@ -203,23 +246,27 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Dos modificaciones simultáneas del mismo usuario: la que llega tarde se rechaza. Solo los
-     * usuarios llevan bloqueo optimista.
+     * Modificación simultánea: la fila ha cambiado o se ha eliminado entre su lectura y su
+     * escritura, y la petición que llega tarde se rechaza. Cubre el bloqueo optimista de los
+     * usuarios ({@link OptimisticLockingFailureException}, que incluye la variante de JPA) y, como
+     * defensa adicional, la {@link StaleStateException} de Hibernate si llegara sin traducir (las
+     * operaciones de amistades bloquean la fila y en el caso normal responden {@code 404}).
      *
      * @param ex      excepción capturada
      * @param request petición en curso
      * @return respuesta {@code 409} genérica
      */
-    @ExceptionHandler(OptimisticLockingFailureException.class)
-    public ResponseEntity<ProblemDetail> handleOptimisticLocking(OptimisticLockingFailureException ex,
-                                                                 HttpServletRequest request) {
+    @ExceptionHandler({OptimisticLockingFailureException.class, StaleStateException.class})
+    public ResponseEntity<ProblemDetail> handleConcurrentModification(RuntimeException ex,
+                                                                      HttpServletRequest request) {
         LOG.warn("Modificación simultánea rechazada ({})", ex.getClass().getSimpleName());
         return build(HttpStatus.CONFLICT, "Modificación simultánea",
-                "El usuario se ha modificado a la vez; vuelve a intentarlo", request);
+                "El recurso se ha modificado a la vez; vuelve a intentarlo", request);
     }
 
     /**
-     * Regla de negocio incumplida en un campo concreto (alta de reserva o filtro de búsqueda).
+     * Regla de negocio incumplida en un campo concreto (alta de reserva, filtro de búsqueda,
+     * buscador de usuarios o solicitud de amistad a uno mismo).
      *
      * @param ex      excepción capturada
      * @param request petición en curso
