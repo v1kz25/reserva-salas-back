@@ -7,12 +7,10 @@ import com.reservasalas.entity.Room;
 import com.reservasalas.exception.DuplicateRoomNameException;
 import com.reservasalas.exception.RoomHasFutureReservationsException;
 import com.reservasalas.exception.RoomNotFoundException;
+import com.reservasalas.exception.UniqueConstraintViolations;
 import com.reservasalas.repository.ReservationRepository;
 import com.reservasalas.repository.RoomRepository;
-import java.sql.SQLException;
 import java.util.List;
-import java.util.Locale;
-import org.hibernate.exception.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,8 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class RoomService {
 
     private static final Logger LOG = LoggerFactory.getLogger(RoomService.class);
-    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
-    private static final String UNIQUE_NAME_CONSTRAINT = Room.UNIQUE_NAME_CONSTRAINT.toLowerCase(Locale.ROOT);
 
     private final RoomRepository roomRepository;
     private final ReservationRepository reservationRepository;
@@ -150,34 +146,10 @@ public class RoomService {
      * cualquier otra violación de integridad se devuelve tal cual para que acabe como error interno.
      */
     private static RuntimeException translateIntegrityViolation(DataIntegrityViolationException e) {
-        if (violatesUniqueName(e)) {
+        if (UniqueConstraintViolations.isViolation(e, Room.UNIQUE_NAME_CONSTRAINT)) {
             LOG.warn("Nombre de sala repetido detectado por la base de datos");
             return new DuplicateRoomNameException();
         }
         return e;
-    }
-
-    /**
-     * Decide si la violación de integridad se debe a la restricción única del nombre normalizado.
-     * Si alguna causa informa del nombre de la restricción, manda ese nombre; si no, basta con que
-     * la base de datos indique una violación de unicidad (SQLSTATE {@code 23505}), porque la única
-     * restricción única de las salas, aparte de la clave primaria generada, es la del nombre.
-     */
-    private static boolean violatesUniqueName(Throwable error) {
-        String constraintName = null;
-        boolean uniqueViolation = false;
-        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
-            if (cause instanceof ConstraintViolationException violation && violation.getConstraintName() != null) {
-                constraintName = violation.getConstraintName();
-            }
-            if (cause instanceof SQLException sqlException
-                    && UNIQUE_VIOLATION_SQL_STATE.equals(sqlException.getSQLState())) {
-                uniqueViolation = true;
-            }
-        }
-        if (constraintName != null) {
-            return constraintName.toLowerCase(Locale.ROOT).contains(UNIQUE_NAME_CONSTRAINT);
-        }
-        return uniqueViolation;
     }
 }
