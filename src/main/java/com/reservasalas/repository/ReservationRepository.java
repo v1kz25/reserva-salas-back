@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -31,6 +33,18 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long>,
     @Override
     @EntityGraph(attributePaths = "user")
     List<Reservation> findAll(Specification<Reservation> spec, Sort sort);
+
+    /**
+     * Busca una página de las reservas que cumplen el filtro, cargando a la vez su usuario para
+     * poder mostrar el responsable sin una consulta por reserva.
+     *
+     * @param spec     filtro de búsqueda
+     * @param pageable página, tamaño y orden solicitados
+     * @return la página de reservas, con su contenido vacío si está fuera de rango
+     */
+    @Override
+    @EntityGraph(attributePaths = "user")
+    Page<Reservation> findAll(Specification<Reservation> spec, Pageable pageable);
 
     /**
      * Busca una reserva por su identificador, cargando a la vez su usuario.

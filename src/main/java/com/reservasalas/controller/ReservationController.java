@@ -1,13 +1,15 @@
 package com.reservasalas.controller;
 
 import com.reservasalas.dto.CreateReservationRequest;
+import com.reservasalas.dto.PageDto;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.security.AuthenticatedUser;
 import com.reservasalas.service.ReservationService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.net.URI;
 import java.time.LocalDate;
-import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,18 +41,26 @@ public class ReservationController {
     }
 
     /**
-     * Lista las reservas ordenadas por fecha y hora de inicio.
+     * Lista una página de las reservas, ordenadas por fecha y hora de inicio.
      *
      * @param roomId filtro opcional por sala
      * @param from   filtro opcional: primer día incluido
      * @param to     filtro opcional: último día incluido
-     * @return las reservas que cumplen los filtros
+     * @param page   número de página, empezando en 0
+     * @param size   tamaño de página, de 1 a {@value PageDto#MAX_SIZE}
+     * @return la página de reservas que cumplen los filtros
      */
     @GetMapping
-    public ResponseEntity<List<ReservationDto>> find(@RequestParam(name = "salaId", required = false) Long roomId,
-                                                     @RequestParam(name = "fechaDesde", required = false) LocalDate from,
-                                                     @RequestParam(name = "fechaHasta", required = false) LocalDate to) {
-        return ResponseEntity.ok(reservationService.find(roomId, from, to));
+    public ResponseEntity<PageDto<ReservationDto>> find(
+            @RequestParam(name = "salaId", required = false) Long roomId,
+            @RequestParam(name = "fechaDesde", required = false) LocalDate from,
+            @RequestParam(name = "fechaHasta", required = false) LocalDate to,
+            @RequestParam(name = "page", defaultValue = "0")
+            @Min(value = 0, message = "debe ser al menos 0") int page,
+            @RequestParam(name = "size", defaultValue = PageDto.DEFAULT_SIZE)
+            @Min(value = 1, message = "debe ser al menos 1")
+            @Max(value = PageDto.MAX_SIZE, message = "no puede ser mayor que " + PageDto.MAX_SIZE) int size) {
+        return ResponseEntity.ok(reservationService.find(roomId, from, to, page, size));
     }
 
     /**

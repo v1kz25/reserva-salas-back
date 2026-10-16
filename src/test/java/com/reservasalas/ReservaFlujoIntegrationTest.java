@@ -135,14 +135,14 @@ class ReservaFlujoIntegrationTest {
         mvc.perform(get("/api/reservas").param("salaId", roomId.toString())
                         .param("fechaDesde", "2026-10-03").param("fechaHasta", "2026-10-03"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].fecha").value("2026-10-03"));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].fecha").value("2026-10-03"));
         mvc.perform(get("/api/reservas").param("salaId", roomId.toString()).param("fechaHasta", "2026-10-02"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].fecha").value("2026-10-02"));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].fecha").value("2026-10-02"));
         mvc.perform(get("/api/reservas").param("salaId", roomId.toString()).param("fechaDesde", "2026-10-02"))
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.content.length()").value(2));
     }
 
     @Test
@@ -205,8 +205,8 @@ class ReservaFlujoIntegrationTest {
 
         mvc.perform(get("/api/reservas").param("salaId", roomId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(Integer.parseInt(viva)));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(Integer.parseInt(viva)));
     }
 
     @Test
