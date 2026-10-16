@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.ReservationDto;
+import com.reservasalas.dto.ReservationFilter;
 import com.reservasalas.entity.Reservation;
 import com.reservasalas.entity.Role;
 import com.reservasalas.entity.Room;
@@ -178,7 +179,7 @@ class ReservationServiceTest {
 
     @Test
     void findConRangoInvertidoLanzaErrorEnFechaHastaSinConsultar() {
-        assertThatThrownBy(() -> service.find(null, TODAY.plusDays(5), TODAY.plusDays(4), false, 0, 20, TestUsers.ANA))
+        assertThatThrownBy(() -> service.find(new ReservationFilter(null, TODAY.plusDays(5), TODAY.plusDays(4), false, null), 0, 20, TestUsers.ANA))
                 .isInstanceOfSatisfying(InvalidDateRangeException.class,
                         e -> assertThat(e.getField()).isEqualTo("fechaHasta"));
         verifyNoInteractions(reservationRepository);
@@ -188,10 +189,10 @@ class ReservationServiceTest {
     void findAceptaMismaFechaEnAmbasPuntasYSoloUnaDeEllas() {
         when(reservationRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        assertThat(service.find(null, TODAY, TODAY, false, 0, 20, TestUsers.ANA).content()).isEmpty();
-        assertThat(service.find(null, TODAY, null, false, 0, 20, TestUsers.ANA).content()).isEmpty();
-        assertThat(service.find(null, null, TODAY, false, 0, 20, TestUsers.ANA).content()).isEmpty();
-        assertThat(service.find(1L, TODAY, TODAY.plusDays(1), false, 0, 20, TestUsers.ANA).content()).isEmpty();
+        assertThat(service.find(new ReservationFilter(null, TODAY, TODAY, false, null), 0, 20, TestUsers.ANA).content()).isEmpty();
+        assertThat(service.find(new ReservationFilter(null, TODAY, null, false, null), 0, 20, TestUsers.ANA).content()).isEmpty();
+        assertThat(service.find(new ReservationFilter(null, null, TODAY, false, null), 0, 20, TestUsers.ANA).content()).isEmpty();
+        assertThat(service.find(new ReservationFilter(1L, TODAY, TODAY.plusDays(1), false, null), 0, 20, TestUsers.ANA).content()).isEmpty();
         verify(reservationRepository, times(4)).findAll(any(Specification.class), any(Pageable.class));
     }
 
@@ -200,7 +201,7 @@ class ReservationServiceTest {
         Pageable expected = PageRequest.of(0, 20, Sort.by("date", "startTime", "id"));
         when(reservationRepository.findAll(any(Specification.class), eq(expected))).thenReturn(Page.empty(expected));
 
-        service.find(null, null, null, false, 0, 20, TestUsers.ANA);
+        service.find(new ReservationFilter(null, null, null, false, null), 0, 20, TestUsers.ANA);
 
         verify(reservationRepository).findAll(any(Specification.class), eq(expected));
     }

@@ -1,5 +1,6 @@
 package com.reservasalas.repository;
 
+import com.reservasalas.dto.MyReservationRole;
 import com.reservasalas.entity.Invitation;
 import com.reservasalas.entity.InvitationStatus;
 import com.reservasalas.entity.Reservation;
@@ -54,21 +55,43 @@ public final class ReservationSpecifications {
     }
 
     /**
-     * Filtra las reservas en las que participa el usuario: las que organiza y aquellas en las que
-     * tiene una invitación pendiente o aceptada.
+     * Filtra «Mis reservas»: las reservas en las que participa el usuario con el papel indicado.
      *
      * @param userId identificador del usuario
+     * @param role   papel del usuario: {@link MyReservationRole#ORGANIZED} (las que organiza),
+     *               {@link MyReservationRole#INVITED} (invitación aceptada) o
+     *               {@link MyReservationRole#PENDING} (invitación pendiente); si es nulo, las que
+     *               organiza y aquellas en las que tiene una invitación pendiente o aceptada
      * @return especificación aplicable
      */
-    public static Specification<Reservation> organizedByOrInvited(Long userId) {
+    public static Specification<Reservation> participatedBy(Long userId, MyReservationRole role) {
+        if (role == null) {
+            return organizedBy(userId).or(invitedWith(userId, InvitationStatus.PENDING, InvitationStatus.ACCEPTED));
+        }
+        return switch (role) {
+            case ORGANIZED -> organizedBy(userId);
+            case INVITED -> invitedWith(userId, InvitationStatus.ACCEPTED);
+            case PENDING -> invitedWith(userId, InvitationStatus.PENDING);
+        };
+    }
+
+    private static Specification<Reservation> organizedBy(Long userId) {
+        return (root, query, cb) -> cb.equal(root.get("user").get("id"), userId);
+    }
+
+    /**
+     * Reservas en las que el usuario tiene una invitación en alguno de los estados indicados, con una
+     * subconsulta {@code EXISTS} para no duplicar filas.
+     */
+    private static Specification<Reservation> invitedWith(Long userId, InvitationStatus... statuses) {
         return (root, query, cb) -> {
             var invited = query.subquery(Long.class);
             var invitation = invited.from(Invitation.class);
             invited.select(invitation.get("id"))
                     .where(cb.equal(invitation.get("reservation"), root),
                             cb.equal(invitation.get("user").get("id"), userId),
-                            cb.notEqual(invitation.get("status"), InvitationStatus.REJECTED));
-            return cb.or(cb.equal(root.get("user").get("id"), userId), cb.exists(invited));
+                            invitation.get("status").in((Object[]) statuses));
+            return cb.exists(invited);
         };
     }
 }

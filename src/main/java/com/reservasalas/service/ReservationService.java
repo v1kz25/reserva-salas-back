@@ -3,7 +3,9 @@ package com.reservasalas.service;
 import com.reservasalas.config.CurrentTimeZone;
 import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.InvitationDto;
+import com.reservasalas.dto.MyInvitationDto;
 import com.reservasalas.dto.PageDto;
+import com.reservasalas.dto.ReservationFilter;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.entity.Reservation;
 import com.reservasalas.entity.Room;
@@ -20,10 +22,10 @@ import com.reservasalas.repository.ReservationSpecifications;
 import com.reservasalas.repository.RoomRepository;
 import com.reservasalas.repository.UserRepository;
 import com.reservasalas.security.AuthenticatedUser;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -77,14 +79,12 @@ public class ReservationService {
     /**
      * Lista una página de las reservas ordenadas por fecha y hora de inicio (y por id, para que el
      * orden sea estable entre páginas), con filtros opcionales. Cada reserva sale completa u ocupada
-     * según participe o no el usuario de la sesión; para decidirlo se consultan en lote las
-     * invitaciones del usuario a las reservas de la página.
+     * según participe o no el usuario de la sesión, y con su invitación pendiente o aceptada si la
+     * tiene; para decidirlo se consultan en lote las invitaciones del usuario a las reservas de la
+     * página.
      *
-     * @param roomId      identificador de la sala; si es nulo, no filtra por sala
-     * @param from        primer día incluido; si es nulo, no hay límite inferior
-     * @param to          último día incluido; si es nulo, no hay límite superior
-     * @param mine        si es {@code true}, solo las reservas que organiza el usuario y aquellas en
-     *                    las que tiene una invitación pendiente o aceptada, todas completas
+     * @param filter      filtros opcionales; con {@code mine}, solo «Mis reservas» (todas completas),
+     *                    opcionalmente restringidas al papel indicado
      * @param page        número de página, empezando en 0
      * @param size        tamaño de página
      * @param currentUser usuario de la sesión
@@ -94,29 +94,26 @@ public class ReservationService {
      * @throws InvalidDateRangeException si se indican ambos días y {@code to} es anterior a {@code from}
      */
     @Transactional(readOnly = true)
-    public PageDto<ReservationDto> find(Long roomId, LocalDate from, LocalDate to, boolean mine, int page,
-                                        int size, AuthenticatedUser currentUser) {
-        if (from != null && to != null && to.isBefore(from)) {
+    public PageDto<ReservationDto> find(ReservationFilter filter, int page, int size,
+                                        AuthenticatedUser currentUser) {
+        if (filter.from() != null && filter.to() != null && filter.to().isBefore(filter.from())) {
             throw new InvalidDateRangeException("fechaHasta", "no puede ser anterior a fechaDesde");
         }
-        Specification<Reservation> filter = Specification.allOf(
-                ReservationSpecifications.hasRoom(roomId),
-                ReservationSpecifications.onOrAfter(from),
-                ReservationSpecifications.onOrBefore(to),
-                mine ? ReservationSpecifications.organizedByOrInvited(currentUser.getId())
+        Specification<Reservation> spec = Specification.allOf(
+                ReservationSpecifications.hasRoom(filter.roomId()),
+                ReservationSpecifications.onOrAfter(filter.from()),
+                ReservationSpecifications.onOrBefore(filter.to()),
+                filter.mine() ? ReservationSpecifications.participatedBy(currentUser.getId(), filter.role())
                         : Specification.unrestricted());
         var pageable = PageRequest.of(page, size, BY_DATE_AND_START_TIME);
         if (pageable.getOffset() > Integer.MAX_VALUE) {
-            return PageDto.from(new PageImpl<Reservation>(List.of(), pageable, reservationRepository.count(filter)),
-                    ReservationDto::full);
+            return PageDto.from(new PageImpl<Reservation>(List.of(), pageable, reservationRepository.count(spec)),
+                    ReservationDto::busy);
         }
-        Page<Reservation> result = reservationRepository.findAll(filter, pageable);
-        if (mine) {
-            // El filtro organizedByOrInvited ya deja solo las reservas que organiza el usuario o en las
-            // que tiene una invitación pendiente o aceptada, así que todas se ven completas y no hace
-            // falta consultar sus invitaciones en lote.
-            return PageDto.from(result, ReservationDto::full);
-        }
+        Page<Reservation> result = reservationRepository.findAll(spec, pageable);
+        // Con «Mis reservas» el filtro ya deja solo reservas en las que participa el usuario, así que
+        // viewFor las devuelve todas completas; la consulta en lote sigue haciendo falta para
+        // rellenar miInvitacion.
         return PageDto.from(result, viewFor(result.getContent(), currentUser));
     }
 
@@ -134,13 +131,17 @@ public class ReservationService {
     public ReservationDto findById(Long id, AuthenticatedUser currentUser) {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new ReservationNotFoundException(id));
-        if (!canSeeFull(reservation, currentUser)) {
+        MyInvitationDto myInvitation = invitationRepository.findByReservationIdAndUserId(id, currentUser.getId())
+                .filter(invitation -> invitation.getStatus().isActive())
+                .map(MyInvitationDto::from)
+                .orElse(null);
+        if (!currentUser.isAdmin() && !reservation.isOrganizedBy(currentUser.getId()) && myInvitation == null) {
             return ReservationDto.busy(reservation);
         }
         List<InvitationDto> invitations = invitationRepository.findByReservationWithUser(id).stream()
                 .map(InvitationDto::from)
                 .toList();
-        return ReservationDto.full(reservation, invitations);
+        return ReservationDto.full(reservation, myInvitation, invitations);
     }
 
     /**
@@ -174,7 +175,7 @@ public class ReservationService {
         LOG.info("Reserva {} creada en la sala {} el {} de {} a {}", saved.getId(), room.getId(),
                 saved.getDate(), saved.getStartTime(), saved.getEndTime());
 
-        return ReservationDto.full(saved);
+        return ReservationDto.full(saved, null);
     }
 
     /**
@@ -202,36 +203,28 @@ public class ReservationService {
     }
 
     /**
-     * Decide si el usuario ve completa una reserva concreta: es administrador, la organiza o tiene
-     * una invitación pendiente o aceptada.
-     */
-    private boolean canSeeFull(Reservation reservation, AuthenticatedUser currentUser) {
-        return currentUser.isAdmin()
-                || reservation.isOrganizedBy(currentUser.getId())
-                || invitationRepository.existsActive(reservation.getId(), currentUser.getId());
-    }
-
-    /**
-     * Devuelve la transformación que aplica la privacidad a una página de reservas. Las invitaciones
-     * del usuario se consultan una sola vez para todas las reservas de la página que no organiza,
-     * para no lanzar una consulta por reserva.
+     * Devuelve la transformación que aplica la privacidad a una página de reservas y rellena
+     * {@code miInvitacion}. Las invitaciones activas del usuario se consultan una sola vez para todas
+     * las reservas de la página que no organiza (el organizador nunca está invitado a la suya), para
+     * no lanzar una consulta por reserva. También se consultan para un administrador, que ve todas
+     * completas pero puede estar invitado.
      */
     private Function<Reservation, ReservationDto> viewFor(List<Reservation> reservations,
                                                          AuthenticatedUser currentUser) {
-        if (currentUser.isAdmin()) {
-            return ReservationDto::full;
-        }
         Long userId = currentUser.getId();
         List<Long> othersIds = reservations.stream()
                 .filter(reservation -> !reservation.isOrganizedBy(userId))
                 .map(Reservation::getId)
                 .toList();
-        Set<Long> invitedIds = othersIds.isEmpty()
-                ? Set.of()
-                : invitationRepository.findActiveReservationIds(userId, othersIds);
+        Map<Long, MyInvitationDto> myInvitations = othersIds.isEmpty()
+                ? Map.of()
+                : invitationRepository.findActiveByUserAndReservations(userId, othersIds).stream()
+                        .collect(Collectors.toMap(invitation -> invitation.getReservation().getId(),
+                                MyInvitationDto::from));
         return reservation -> {
-            if (reservation.isOrganizedBy(userId) || invitedIds.contains(reservation.getId())) {
-                return ReservationDto.full(reservation);
+            MyInvitationDto myInvitation = myInvitations.get(reservation.getId());
+            if (currentUser.isAdmin() || reservation.isOrganizedBy(userId) || myInvitation != null) {
+                return ReservationDto.full(reservation, myInvitation);
             }
             return ReservationDto.busy(reservation);
         };

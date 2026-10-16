@@ -6,7 +6,6 @@ import java.time.LocalTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -56,36 +55,22 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
     long countActiveByReservation(@Param("reservationId") Long reservationId);
 
     /**
-     * Comprueba si el usuario tiene una invitación pendiente o aceptada a la reserva.
-     *
-     * @param reservationId identificador de la reserva
-     * @param userId        identificador del usuario
-     * @return {@code true} si está invitado y no la ha rechazado
-     */
-    @Query("""
-            select count(i) > 0
-            from Invitation i
-            where i.reservation.id = :reservationId
-              and i.user.id = :userId
-              and i.status <> com.reservasalas.entity.InvitationStatus.REJECTED""")
-    boolean existsActive(@Param("reservationId") Long reservationId, @Param("userId") Long userId);
-
-    /**
-     * De entre las reservas indicadas, devuelve aquellas en las que el usuario tiene una invitación
-     * pendiente o aceptada. Sirve para decidir en lote el nivel de detalle de una página de reservas.
+     * De entre las reservas indicadas, devuelve las invitaciones pendientes o aceptadas del usuario.
+     * Sirve para decidir en lote el nivel de detalle y {@code miInvitacion} de una página de
+     * reservas. No inicializa la reserva ni el usuario.
      *
      * @param userId         identificador del usuario
      * @param reservationIds identificadores de las reservas a comprobar; no debe estar vacía
-     * @return los identificadores de las reservas en las que participa como invitado
+     * @return las invitaciones activas del usuario a esas reservas, como mucho una por reserva
      */
     @Query("""
-            select i.reservation.id
+            select i
             from Invitation i
             where i.user.id = :userId
               and i.reservation.id in :reservationIds
               and i.status <> com.reservasalas.entity.InvitationStatus.REJECTED""")
-    Set<Long> findActiveReservationIds(@Param("userId") Long userId,
-                                       @Param("reservationIds") Collection<Long> reservationIds);
+    List<Invitation> findActiveByUserAndReservations(@Param("userId") Long userId,
+                                                     @Param("reservationIds") Collection<Long> reservationIds);
 
     /**
      * Devuelve la reserva de una invitación si el invitado es el usuario indicado, sin cargar la

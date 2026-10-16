@@ -1,7 +1,9 @@
 package com.reservasalas.controller;
 
 import com.reservasalas.dto.CreateReservationRequest;
+import com.reservasalas.dto.MyReservationRole;
 import com.reservasalas.dto.PageDto;
+import com.reservasalas.dto.ReservationFilter;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.security.AuthenticatedUser;
 import com.reservasalas.service.ReservationService;
@@ -46,6 +48,8 @@ public class ReservationController {
      *
      * @param mine        si es {@code true}, solo «Mis reservas»: las que organiza el usuario y
      *                    aquellas en las que tiene una invitación pendiente o aceptada
+     * @param role        con {@code mine}, papel opcional: {@code ORGANIZADA}, {@code INVITADO} o
+     *                    {@code PENDIENTE}; sin {@code mine} se ignora
      * @param roomId      filtro opcional por sala
      * @param from        filtro opcional: primer día incluido
      * @param to          filtro opcional: último día incluido
@@ -57,6 +61,7 @@ public class ReservationController {
     @GetMapping
     public ResponseEntity<PageDto<ReservationDto>> find(
             @RequestParam(name = "mis", defaultValue = "false") boolean mine,
+            @RequestParam(name = "rol", required = false) String role,
             @RequestParam(name = "salaId", required = false) Long roomId,
             @RequestParam(name = "fechaDesde", required = false) LocalDate from,
             @RequestParam(name = "fechaHasta", required = false) LocalDate to,
@@ -66,7 +71,9 @@ public class ReservationController {
             @Min(value = 1, message = "debe ser al menos 1")
             @Max(value = PageDto.MAX_SIZE, message = "no puede ser mayor que " + PageDto.MAX_SIZE) int size,
             @AuthenticationPrincipal AuthenticatedUser currentUser) {
-        return ResponseEntity.ok(reservationService.find(roomId, from, to, mine, page, size, currentUser));
+        MyReservationRole parsedRole = mine ? MyReservationRole.fromApiValue(role) : null;
+        var filter = new ReservationFilter(roomId, from, to, mine, parsedRole);
+        return ResponseEntity.ok(reservationService.find(filter, page, size, currentUser));
     }
 
     /**

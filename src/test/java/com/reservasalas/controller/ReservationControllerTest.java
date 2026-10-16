@@ -22,6 +22,7 @@ import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.PageDto;
 import com.reservasalas.dto.ReservationDetail;
 import com.reservasalas.dto.ReservationDto;
+import com.reservasalas.dto.ReservationFilter;
 import com.reservasalas.exception.InvalidDateRangeException;
 import com.reservasalas.exception.InvalidReservationException;
 import com.reservasalas.exception.OverlappingReservationException;
@@ -81,7 +82,7 @@ class ReservationControllerTest {
     @Test
     void postCrea201ConLocationYHorasHHmm() throws Exception {
         when(service.create(any(), any())).thenReturn(new ReservationDto(7L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión", ReservationDetail.FULL, null));
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión", ReservationDetail.FULL, null, null));
 
         enviar(VALID)
                 .andExpect(status().isCreated())
@@ -154,7 +155,7 @@ class ReservationControllerTest {
     @Test
     void responsableEnLaPeticionSeIgnora() throws Exception {
         when(service.create(any(), any())).thenReturn(new ReservationDto(1L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión", ReservationDetail.FULL, null));
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión", ReservationDetail.FULL, null, null));
         enviar(VALID.replace("\"motivo\"", "\"responsable\":\"Otro\",\"motivo\""))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.responsable").value("Ana"));
@@ -168,7 +169,7 @@ class ReservationControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errores[0].campo").value("motivo"));
         when(service.create(any(), any())).thenReturn(new ReservationDto(1L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "m".repeat(255), ReservationDetail.FULL, null));
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "m".repeat(255), ReservationDetail.FULL, null, null));
         enviar(body("motivo", "\"" + "m".repeat(255) + "\"")).andExpect(status().isCreated());
     }
 
@@ -197,8 +198,8 @@ class ReservationControllerTest {
 
     @Test
     void getSinFiltrosDelegaConNulos() throws Exception {
-        when(service.find(null, null, null, false, 0, 20, TestUsers.ANA)).thenReturn(page(new ReservationDto(1L, 1L,
-                LocalDate.of(2030, 5, 10), LocalTime.of(9, 5), LocalTime.of(10, 0), 1L, "Ana", "x", ReservationDetail.FULL, null)));
+        when(service.find(new ReservationFilter(null, null, null, false, null), 0, 20, TestUsers.ANA)).thenReturn(page(new ReservationDto(1L, 1L,
+                LocalDate.of(2030, 5, 10), LocalTime.of(9, 5), LocalTime.of(10, 0), 1L, "Ana", "x", ReservationDetail.FULL, null, null)));
 
         mvc.perform(get("/api/reservas"))
                 .andExpect(status().isOk())
@@ -208,24 +209,24 @@ class ReservationControllerTest {
 
     @Test
     void getPasaPageYSizeAlServicioTalCualLlegan() throws Exception {
-        when(service.find(null, null, null, false, 2, 50, TestUsers.ANA)).thenReturn(page());
+        when(service.find(new ReservationFilter(null, null, null, false, null), 2, 50, TestUsers.ANA)).thenReturn(page());
 
         mvc.perform(get("/api/reservas").param("page", "2").param("size", "50"))
                 .andExpect(status().isOk());
-        verify(service).find(null, null, null, false, 2, 50, TestUsers.ANA);
+        verify(service).find(new ReservationFilter(null, null, null, false, null), 2, 50, TestUsers.ANA);
     }
 
     @Test
     void getConFiltrosSalaIdYRangoDeFechas() throws Exception {
         LocalDate from = LocalDate.of(2030, 5, 10);
         LocalDate to = LocalDate.of(2030, 5, 12);
-        when(service.find(3L, from, to, false, 0, 20, TestUsers.ANA)).thenReturn(page());
+        when(service.find(new ReservationFilter(3L, from, to, false, null), 0, 20, TestUsers.ANA)).thenReturn(page());
 
         mvc.perform(get("/api/reservas").param("salaId", "3")
                         .param("fechaDesde", "2030-05-10").param("fechaHasta", "2030-05-12"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isEmpty());
-        verify(service).find(3L, from, to, false, 0, 20, TestUsers.ANA);
+        verify(service).find(new ReservationFilter(3L, from, to, false, null), 0, 20, TestUsers.ANA);
     }
 
     @Test
@@ -245,7 +246,7 @@ class ReservationControllerTest {
 
     @Test
     void getConRangoInvertidoDa400ConCampoFechaHasta() throws Exception {
-        when(service.find(null, LocalDate.of(2030, 5, 12), LocalDate.of(2030, 5, 10), false, 0, 20, TestUsers.ANA))
+        when(service.find(new ReservationFilter(null, LocalDate.of(2030, 5, 12), LocalDate.of(2030, 5, 10), false, null), 0, 20, TestUsers.ANA))
                 .thenThrow(new InvalidDateRangeException("fechaHasta", "no puede ser anterior a fechaDesde"));
 
         mvc.perform(get("/api/reservas").param("fechaDesde", "2030-05-12").param("fechaHasta", "2030-05-10"))
@@ -258,29 +259,29 @@ class ReservationControllerTest {
     @Test
     void getConMismaFechaEnAmbasPuntasEsValido() throws Exception {
         LocalDate day = LocalDate.of(2030, 5, 10);
-        when(service.find(null, day, day, false, 0, 20, TestUsers.ANA)).thenReturn(page());
+        when(service.find(new ReservationFilter(null, day, day, false, null), 0, 20, TestUsers.ANA)).thenReturn(page());
 
         mvc.perform(get("/api/reservas").param("fechaDesde", "2030-05-10").param("fechaHasta", "2030-05-10"))
                 .andExpect(status().isOk());
-        verify(service).find(null, day, day, false, 0, 20, TestUsers.ANA);
+        verify(service).find(new ReservationFilter(null, day, day, false, null), 0, 20, TestUsers.ANA);
     }
 
     @Test
     void getSoloConFechaDesdeDelegaConHastaNulo() throws Exception {
         LocalDate from = LocalDate.of(2030, 5, 10);
-        when(service.find(null, from, null, false, 0, 20, TestUsers.ANA)).thenReturn(page());
+        when(service.find(new ReservationFilter(null, from, null, false, null), 0, 20, TestUsers.ANA)).thenReturn(page());
 
         mvc.perform(get("/api/reservas").param("fechaDesde", "2030-05-10")).andExpect(status().isOk());
-        verify(service).find(null, from, null, false, 0, 20, TestUsers.ANA);
+        verify(service).find(new ReservationFilter(null, from, null, false, null), 0, 20, TestUsers.ANA);
     }
 
     @Test
     void getSoloConFechaHastaDelegaConDesdeNulo() throws Exception {
         LocalDate to = LocalDate.of(2030, 5, 10);
-        when(service.find(null, null, to, false, 0, 20, TestUsers.ANA)).thenReturn(page());
+        when(service.find(new ReservationFilter(null, null, to, false, null), 0, 20, TestUsers.ANA)).thenReturn(page());
 
         mvc.perform(get("/api/reservas").param("fechaHasta", "2030-05-10")).andExpect(status().isOk());
-        verify(service).find(null, null, to, false, 0, 20, TestUsers.ANA);
+        verify(service).find(new ReservationFilter(null, null, to, false, null), 0, 20, TestUsers.ANA);
     }
 
     @ParameterizedTest
@@ -304,8 +305,8 @@ class ReservationControllerTest {
     void getCombinaSalaIdYRango() throws Exception {
         LocalDate from = LocalDate.of(2030, 5, 10);
         LocalDate to = LocalDate.of(2030, 5, 10);
-        when(service.find(2L, from, to, false, 0, 20, TestUsers.ANA)).thenReturn(page(new ReservationDto(5L, 2L, from,
-                LocalTime.of(9, 0), LocalTime.of(10, 0), 1L, "Ana", "x", ReservationDetail.FULL, null)));
+        when(service.find(new ReservationFilter(2L, from, to, false, null), 0, 20, TestUsers.ANA)).thenReturn(page(new ReservationDto(5L, 2L, from,
+                LocalTime.of(9, 0), LocalTime.of(10, 0), 1L, "Ana", "x", ReservationDetail.FULL, null, null)));
 
         mvc.perform(get("/api/reservas").param("salaId", "2")
                         .param("fechaDesde", "2030-05-10").param("fechaHasta", "2030-05-10"))
@@ -327,7 +328,7 @@ class ReservationControllerTest {
     @Test
     void getPorIdDevuelve200ConLaReserva() throws Exception {
         when(service.findById(7L, TestUsers.ANA)).thenReturn(new ReservationDto(7L, 1L, LocalDate.of(2030, 5, 10),
-                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión", ReservationDetail.FULL, null));
+                LocalTime.of(10, 0), LocalTime.of(11, 0), 1L, "Ana", "Reunión", ReservationDetail.FULL, null, null));
 
         mvc.perform(get("/api/reservas/7"))
                 .andExpect(status().isOk())

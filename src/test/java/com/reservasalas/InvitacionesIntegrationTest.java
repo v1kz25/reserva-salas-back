@@ -1278,4 +1278,220 @@ class InvitacionesIntegrationTest {
         }
         assertThat(counts[1]).isLessThanOrEqualTo(counts[0]);
     }
+
+    // ---- miInvitacion ----
+
+    private void assertMyInvitation(JsonNode reservation, Long invitationId, String state) {
+        if (state == null) {
+            assertThat(reservation.has("miInvitacion")).as(reservation.toString()).isFalse();
+            return;
+        }
+        JsonNode mine = reservation.get("miInvitacion");
+        assertThat(mine).as(reservation.toString()).isNotNull();
+        assertThat(keys(mine)).containsExactlyInAnyOrder("id", "estado");
+        assertThat(mine.get("id").asLong()).isEqualTo(invitationId);
+        assertThat(mine.get("estado").asString()).isEqualTo(state);
+    }
+
+    @Test
+    void miInvitacionEstaPresenteOAusenteEnCadaVista() throws Exception {
+        Person org = person();
+        Person pending = friendOf(org);
+        Person accepted = friendOf(org);
+        Person rejected = friendOf(org);
+        Person adminInvited = admin();
+        Person adminNotInvited = admin();
+        Person stranger = person();
+        befriend(org, adminInvited);
+        Reservation r = reservation(org);
+        long pendingId = inviteOk(org, r.getId(), pending);
+        long acceptedId = inviteOk(org, r.getId(), accepted);
+        accept(accepted, acceptedId);
+        reject(rejected, inviteOk(org, r.getId(), rejected));
+        long adminId = inviteOk(org, r.getId(), adminInvited);
+
+        record Case(Person who, Long invitationId, String state, boolean inMine) {
+        }
+        List<Case> cases = List.of(
+                new Case(org, null, null, true),
+                new Case(pending, pendingId, "PENDIENTE", true),
+                new Case(accepted, acceptedId, "ACEPTADA", true),
+                new Case(rejected, null, null, false),
+                new Case(adminInvited, adminId, "PENDIENTE", true),
+                new Case(adminNotInvited, null, null, false),
+                new Case(stranger, null, null, false));
+        for (Case c : cases) {
+            JsonNode detail = detail(c.who(), r.getId());
+            JsonNode inList = list(c.who(), "?salaId=" + room.getId()).get("content").get(0);
+            boolean full = c.who() == adminNotInvited || c.inMine() || c.who() == org;
+            assertThat(detail.get("detalle").asString()).isEqualTo(full ? "COMPLETO" : "OCUPADA");
+            assertMyInvitation(detail, c.invitationId(), c.state());
+            assertMyInvitation(inList, c.invitationId(), c.state());
+
+            JsonNode mine = list(c.who(), "?mis=true&salaId=" + room.getId());
+            if (c.inMine()) {
+                assertThat(ids(mine)).containsExactly(r.getId());
+                assertMyInvitation(mine.get("content").get(0), c.invitationId(), c.state());
+            } else {
+                assertThat(ids(mine)).isEmpty();
+            }
+        }
+        // Un ADMIN no invitado ve la reserva completa pero sin miInvitacion
+        assertThat(detail(adminNotInvited, r.getId()).get("detalle").asString()).isEqualTo("COMPLETO");
+
+        JsonNode pendientes = mapper.readTree(pending.mvc().perform(get("/api/invitaciones/pendientes"))
+                .andReturn().getResponse().getContentAsString());
+        assertThat(pendientes).hasSize(1);
+        assertMyInvitation(pendientes.get(0).get("reserva"), pendingId, "PENDIENTE");
+    }
+
+    @Test
+    void miInvitacionPasaAAceptadaAlAceptarYDesapareceAlRechazar() throws Exception {
+        Person org = person();
+        Person guest = friendOf(org);
+        Reservation r = reservation(org);
+        long id = inviteOk(org, r.getId(), guest);
+        assertMyInvitation(detail(guest, r.getId()), id, "PENDIENTE");
+        accept(guest, id);
+        assertMyInvitation(detail(guest, r.getId()), id, "ACEPTADA");
+        reject(guest, id);
+        assertMyInvitation(detail(guest, r.getId()), null, null);
+    }
+
+    // ---- rol ----
+
+    private record RoleScenario(Reservation own, Reservation pending, Reservation accepted, Reservation rejected,
+                                Reservation pastPending, Reservation pastAccepted, Person viewer) {
+    }
+
+    private RoleScenario roleScenario() throws Exception {
+        Person org = person();
+        Person viewer = person();
+        Reservation pastPending = reservation(org, room, LocalDate.of(2020, 1, 1), LocalTime.of(9, 0),
+                LocalTime.of(10, 0));
+        Reservation pastAccepted = reservation(org, room, LocalDate.of(2020, 1, 2), LocalTime.of(9, 0),
+                LocalTime.of(10, 0));
+        Reservation own = reservation(viewer, room, BASE, LocalTime.of(9, 0), LocalTime.of(10, 0));
+        Reservation pending = reservation(org, room, BASE.plusDays(1), LocalTime.of(9, 0), LocalTime.of(10, 0));
+        Reservation accepted = reservation(org, room, BASE.plusDays(2), LocalTime.of(9, 0), LocalTime.of(10, 0));
+        Reservation rejected = reservation(org, room, BASE.plusDays(3), LocalTime.of(9, 0), LocalTime.of(10, 0));
+        insertInvitation(pastPending, viewer, InvitationStatus.PENDING);
+        insertInvitation(pastAccepted, viewer, InvitationStatus.ACCEPTED);
+        insertInvitation(pending, viewer, InvitationStatus.PENDING);
+        insertInvitation(accepted, viewer, InvitationStatus.ACCEPTED);
+        insertInvitation(rejected, viewer, InvitationStatus.REJECTED);
+        return new RoleScenario(own, pending, accepted, rejected, pastPending, pastAccepted, viewer);
+    }
+
+    @Test
+    void rolFiltraOrganizadaInvitadoYPendiente() throws Exception {
+        RoleScenario s = roleScenario();
+        String base = "?mis=true&salaId=" + room.getId();
+
+        assertThat(ids(list(s.viewer(), base + "&rol=ORGANIZADA"))).containsExactly(s.own().getId());
+        assertThat(ids(list(s.viewer(), base + "&rol=INVITADO")))
+                .containsExactly(s.pastAccepted().getId(), s.accepted().getId());
+        assertThat(ids(list(s.viewer(), base + "&rol=PENDIENTE")))
+                .containsExactly(s.pastPending().getId(), s.pending().getId());
+        assertThat(ids(list(s.viewer(), base))).containsExactly(s.pastPending().getId(),
+                s.pastAccepted().getId(), s.own().getId(), s.pending().getId(), s.accepted().getId());
+        list(s.viewer(), base + "&rol=PENDIENTE").get("content").forEach(this::assertFull);
+    }
+
+    @Test
+    void unaPendienteDeReservaPasadaSaleEnPendienteYNoEnInvitado() throws Exception {
+        RoleScenario s = roleScenario();
+        String base = "?mis=true&salaId=" + room.getId();
+        assertThat(ids(list(s.viewer(), base + "&rol=PENDIENTE"))).contains(s.pastPending().getId());
+        assertThat(ids(list(s.viewer(), base + "&rol=INVITADO"))).doesNotContain(s.pastPending().getId());
+        assertThat(ids(list(s.viewer(), base + "&rol=ORGANIZADA"))).doesNotContain(s.pastPending().getId());
+    }
+
+    @Test
+    void rolSeCombinaConFiltrosYPaginacion() throws Exception {
+        Person org = person();
+        Person viewer = person();
+        List<Reservation> accepted = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            Reservation r = reservation(org, room, BASE.plusDays(i), LocalTime.of(9, 0), LocalTime.of(10, 0));
+            insertInvitation(r, viewer, InvitationStatus.ACCEPTED);
+            accepted.add(r);
+            Reservation p = reservation(org, room, BASE.plusDays(i), LocalTime.of(11, 0), LocalTime.of(12, 0));
+            insertInvitation(p, viewer, InvitationStatus.PENDING);
+        }
+        String base = "?mis=true&rol=INVITADO&salaId=" + room.getId();
+
+        JsonNode page0 = list(viewer, base + "&size=2&page=0");
+        JsonNode page2 = list(viewer, base + "&size=2&page=2");
+        assertThat(ids(page0)).containsExactly(accepted.get(0).getId(), accepted.get(1).getId());
+        assertThat(ids(page2)).containsExactly(accepted.get(4).getId());
+        assertThat(page0.get("totalElements").asInt()).isEqualTo(5);
+        assertThat(page0.get("totalPages").asInt()).isEqualTo(3);
+
+        assertThat(ids(list(viewer, base + "&fechaDesde=" + BASE.plusDays(1) + "&fechaHasta=" + BASE.plusDays(2))))
+                .containsExactly(accepted.get(1).getId(), accepted.get(2).getId());
+        assertThat(ids(list(viewer, "?mis=true&rol=INVITADO&salaId=" + newRoom(5).getId()))).isEmpty();
+        assertThat(list(viewer, "?mis=true&rol=PENDIENTE&size=100&salaId=" + room.getId())
+                .get("totalElements").asInt()).isEqualTo(5);
+    }
+
+    @Test
+    void rolInvalidoConMisTrueDa400ConElCampoRol() throws Exception {
+        Person who = person();
+        for (String bad : List.of("XX", "pendiente", "ORGANIZADO")) {
+            who.mvc().perform(get("/api/reservas").param("mis", "true").param("rol", bad))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+                    .andExpect(jsonPath("$.errores", hasSize(1)))
+                    .andExpect(jsonPath("$.errores[0].campo").value("rol"))
+                    .andExpect(jsonPath("$.errores[0].mensaje").isNotEmpty());
+        }
+    }
+
+    @Test
+    void rolInvalidoConMisFalseOSinMisSeIgnora() throws Exception {
+        Person who = person();
+        who.mvc().perform(get("/api/reservas").param("mis", "false").param("rol", "XX").param("salaId",
+                room.getId().toString())).andExpect(status().isOk());
+        who.mvc().perform(get("/api/reservas").param("rol", "XX").param("salaId", room.getId().toString()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void rolValidoConMisFalseSeIgnoraYDevuelveTodasLasReservas() throws Exception {
+        Person org = person();
+        Person viewer = person();
+        Reservation r = reservation(org);
+        assertThat(ids(list(viewer, "?mis=false&rol=ORGANIZADA&salaId=" + room.getId())))
+                .containsExactly(r.getId());
+    }
+
+    @Test
+    void misConCadaRolNoHaceUnaConsultaPorReserva() throws Exception {
+        for (String rol : List.of("ORGANIZADA", "INVITADO", "PENDIENTE")) {
+            long[] counts = new long[2];
+            int[] sizes = {4, 24};
+            for (int k = 0; k < 2; k++) {
+                Room scenario = newRoom(10);
+                Person viewer = person();
+                for (int i = 0; i < sizes[k]; i++) {
+                    Person org = rol.equals("ORGANIZADA") ? viewer : person();
+                    Reservation r = reservation(org, scenario, BASE.plusDays(i), LocalTime.of(9, 0),
+                            LocalTime.of(10, 0));
+                    if (!rol.equals("ORGANIZADA")) {
+                        insertInvitation(r, viewer, rol.equals("INVITADO") ? InvitationStatus.ACCEPTED
+                                : InvitationStatus.PENDING);
+                    }
+                }
+                String query = "?mis=true&rol=" + rol + "&salaId=" + scenario.getId() + "&size=" + sizes[k];
+                list(viewer, query);
+                Statistics stats = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+                stats.clear();
+                JsonNode page = list(viewer, query);
+                counts[k] = stats.getPrepareStatementCount();
+                assertThat(page.get("content")).as(rol).hasSize(sizes[k]);
+            }
+            assertThat(counts[1]).as(rol).isLessThanOrEqualTo(counts[0]);
+        }
+    }
 }

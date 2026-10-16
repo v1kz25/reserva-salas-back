@@ -2,6 +2,7 @@ package com.reservasalas.service;
 
 import com.reservasalas.config.CurrentTimeZone;
 import com.reservasalas.dto.InvitationDto;
+import com.reservasalas.dto.MyInvitationDto;
 import com.reservasalas.dto.ReceivedInvitationDto;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.entity.Invitation;
@@ -155,7 +156,8 @@ public class InvitationService {
      * fecha y hora de inicio de la reserva.
      *
      * @param currentUserId identificador del usuario de la sesión
-     * @return las invitaciones, con la reserva completa y sin invitaciones; vacía si no hay ninguna
+     * @return las invitaciones, con la reserva completa, su {@code miInvitacion} y sin invitaciones;
+     *         vacía si no hay ninguna
      */
     @Transactional(readOnly = true)
     public List<ReceivedInvitationDto> findPending(Long currentUserId) {
@@ -163,7 +165,7 @@ public class InvitationService {
         return invitationRepository.findPendingNotEnded(currentUserId, now.toLocalDate(), now.toLocalTime())
                 .stream()
                 .map(invitation -> new ReceivedInvitationDto(invitation.getId(),
-                        ReservationDto.full(invitation.getReservation())))
+                        ReservationDto.full(invitation.getReservation(), MyInvitationDto.from(invitation))))
                 .toList();
     }
 
