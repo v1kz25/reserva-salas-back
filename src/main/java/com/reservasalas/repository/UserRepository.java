@@ -1,10 +1,12 @@
 package com.reservasalas.repository;
 
+import com.reservasalas.dto.UserSummaryDto;
 import com.reservasalas.entity.Role;
 import com.reservasalas.entity.User;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -31,6 +33,36 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * @return el usuario, si existe y está activo
      */
     Optional<User> findByEmailAndActiveTrue(String email);
+
+    /**
+     * Busca un usuario activo por su identificador.
+     *
+     * @param id identificador del usuario
+     * @return el usuario, si existe y está activo
+     */
+    Optional<User> findByIdAndActiveTrue(Long id);
+
+    /**
+     * Busca usuarios activos, distintos del indicado, cuya clave de búsqueda del nombre cumple el
+     * patrón {@code LIKE}. Se ordenan por la clave de búsqueda (sin distinguir mayúsculas ni
+     * acentos), luego por nombre y por identificador.
+     *
+     * @param excludedId identificador del usuario que se excluye (el de la sesión)
+     * @param pattern    patrón {@code LIKE} sobre la clave de búsqueda, con {@code \} como carácter
+     *                   de escape
+     * @param page       límite de resultados
+     * @return los usuarios encontrados, vacía si no hay ninguno
+     */
+    @Query("""
+            select new com.reservasalas.dto.UserSummaryDto(u.id, u.name)
+            from User u
+            where u.active = true
+              and u.id <> :excludedId
+              and u.nameSearch like :pattern escape '\\'
+            order by u.nameSearch, u.name, u.id""")
+    List<UserSummaryDto> searchActiveByName(@Param("excludedId") Long excludedId,
+                                            @Param("pattern") String pattern,
+                                            Pageable page);
 
     /**
      * Comprueba si ya hay un usuario con ese email.

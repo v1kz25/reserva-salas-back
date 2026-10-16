@@ -13,11 +13,17 @@ import jakarta.persistence.Version;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Usuario de la aplicación. El email es único y se guarda normalizado (sin espacios alrededor y en
  * minúsculas); la contraseña se guarda solo como hash BCrypt. Un usuario desactivado no puede
  * iniciar sesión.
+ *
+ * <p>La columna {@code NAME_SEARCH} guarda el nombre sin diacríticos y en minúsculas (ver
+ * {@link #searchKey(String)}) y se recalcula cada vez que cambia el nombre. Así el buscador compara
+ * sin distinguir mayúsculas ni acentos con un simple {@code LIKE}, sin depender de funciones ni
+ * colaciones propias de cada base de datos.
  *
  * <p>La versión de sesión ({@code SESSION_VERSION}) se incrementa cada vez que cambian el rol, el
  * estado o la contraseña. Cada sesión guarda la versión con la que se abrió, y una sesión cuya
@@ -42,6 +48,14 @@ public class User {
     /** Nombre de la restricción única sobre el email normalizado. */
     public static final String UNIQUE_EMAIL_CONSTRAINT = "UK_USERS_EMAIL";
 
+    /**
+     * Longitud de la clave de búsqueda: el doble que la del nombre, porque pasar a minúsculas puede
+     * alargar algunos caracteres (p. ej. «İ» pasa a «i» más un punto combinable).
+     */
+    private static final int MAX_NAME_SEARCH_LENGTH = 2 * MAX_NAME_LENGTH;
+    private static final Pattern COMBINING_MARKS = Pattern.compile("\\p{M}+");
+    private static final Pattern WHITESPACE_RUN = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "ID")
@@ -52,6 +66,9 @@ public class User {
 
     @Column(name = "NAME", nullable = false, length = MAX_NAME_LENGTH)
     private String name;
+
+    @Column(name = "NAME_SEARCH", nullable = false, length = MAX_NAME_SEARCH_LENGTH)
+    private String nameSearch;
 
     @Column(name = "PASSWORD_HASH", nullable = false, length = 100)
     private String passwordHash;
@@ -90,6 +107,7 @@ public class User {
     public User(String email, String name, String passwordHash, Role role, Instant createdAt) {
         this.email = normalizeEmail(email);
         this.name = cleanName(name);
+        this.nameSearch = searchKey(name);
         this.passwordHash = passwordHash;
         this.role = role;
         this.active = true;
@@ -125,6 +143,24 @@ public class User {
     }
 
     /**
+     * Clave con la que se busca un nombre sin distinguir mayúsculas ni acentos: se descompone en
+     * forma Unicode NFD, se quitan las marcas diacríticas, se reduce cada secuencia de espacios en
+     * blanco a uno solo, se quitan los espacios de los extremos y se pasa a minúsculas. Se aplica
+     * igual al nombre guardado y al texto que se busca. La «ñ» también pierde la tilde.
+     *
+     * @param text nombre o texto de búsqueda
+     * @return la clave de búsqueda, o {@code null} si el texto era nulo
+     */
+    public static String searchKey(String text) {
+        if (text == null) {
+            return null;
+        }
+        String decomposed = Normalizer.normalize(text, Normalizer.Form.NFD);
+        String withoutMarks = COMBINING_MARKS.matcher(decomposed).replaceAll("");
+        return WHITESPACE_RUN.matcher(withoutMarks).replaceAll(" ").strip().toLowerCase(Locale.ROOT);
+    }
+
+    /**
      * Cambia el nombre, el rol y el estado. No toca la versión de sesión: si este método devuelve
      * {@code true}, quien lo llama debe incrementarla en la base de datos para cerrar las sesiones
      * abiertas del usuario.
@@ -137,6 +173,7 @@ public class User {
     public boolean update(String newName, Role newRole, boolean newActive) {
         boolean sessionsMustClose = newRole != role || newActive != active;
         this.name = cleanName(newName);
+        this.nameSearch = searchKey(newName);
         this.role = newRole;
         this.active = newActive;
         return sessionsMustClose;
@@ -186,6 +223,15 @@ public class User {
      */
     public String getName() {
         return name;
+    }
+
+    /**
+     * Nombre normalizado para el buscador, calculado con {@link #searchKey(String)}.
+     *
+     * @return la clave de búsqueda del nombre
+     */
+    public String getNameSearch() {
+        return nameSearch;
     }
 
     /**
