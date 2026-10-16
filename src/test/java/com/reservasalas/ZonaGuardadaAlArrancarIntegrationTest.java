@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.reservasalas.config.CurrentTimeZone;
 import com.reservasalas.entity.AppSetting;
 import com.reservasalas.repository.AppSettingRepository;
+import com.reservasalas.entity.Role;
+import com.reservasalas.repository.UserRepository;
 import com.reservasalas.support.TestUsers;
 import java.time.ZoneId;
 import java.util.Optional;
@@ -50,11 +52,13 @@ class ZonaGuardadaAlArrancarIntegrationTest {
     private CurrentTimeZone currentTimeZone;
     @Autowired
     private WebApplicationContext context;
+    @Autowired
+    private UserRepository users;
 
     @Test
     void laZonaGuardadaSustituyeALaDeAppTimezoneAlArrancar() throws Exception {
         assertThat(currentTimeZone.zone()).isEqualTo(ZoneId.of("Asia/Tokyo"));
-        TestUsers.mockMvcAs(context, TestUsers.ANA)
+        TestUsers.mockMvcAs(context, TestUsers.persisted(users, Role.USER))
                 .perform(get("/api/config/zona-horaria"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.zonaHoraria").value("Asia/Tokyo"));

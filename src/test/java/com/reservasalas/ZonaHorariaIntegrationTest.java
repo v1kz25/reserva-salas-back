@@ -95,12 +95,12 @@ class ZonaHorariaIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        admin = TestUsers.mockMvcAs(context, TestUsers.ADMIN);
-        asUser = TestUsers.mockMvcAs(context, TestUsers.ANA);
+        admin = TestUsers.mockMvcAs(context, TestUsers.persisted(users, Role.ADMIN));
+        asUser = TestUsers.mockMvcAs(context, TestUsers.persisted(users, Role.USER));
         anonymous = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         adminNoCsrf = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
-                .defaultRequest(get("/").with(user(TestUsers.ADMIN)))
+                .defaultRequest(get("/").with(user(TestUsers.persisted(users, Role.ADMIN))))
                 .build();
         currentTimeZone.change(ZoneId.of("Europe/Madrid"));
         settings.deleteAll();
@@ -245,7 +245,7 @@ class ZonaHorariaIntegrationTest {
     }
 
     private ResultActions reservar(Room room, LocalDate date) throws Exception {
-        User owner = users.save(new User("z-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER));
+        User owner = users.save(new User("z-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER, java.time.Instant.parse("2026-10-01T00:00:00Z")));
         MockMvc mvc = TestUsers.mockMvcAs(context, AuthenticatedUser.from(owner));
         String json = """
                 {"salaId":%d,"fecha":"%s","horaInicio":"10:00","horaFin":"11:00","motivo":"Reunión"}"""
@@ -283,7 +283,7 @@ class ZonaHorariaIntegrationTest {
     }
 
     private void reservaDirecta(Room room, LocalDate date) {
-        User owner = users.save(new User("d-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER));
+        User owner = users.save(new User("d-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER, java.time.Instant.parse("2026-10-01T00:00:00Z")));
         reservations.save(new Reservation(room, date, LocalTime.of(10, 0), LocalTime.of(11, 0), owner, "Motivo"));
     }
 
