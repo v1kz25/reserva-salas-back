@@ -13,6 +13,7 @@ import org.springframework.beans.ConversionNotSupportedException;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.core.MethodParameter;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -185,6 +186,36 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<ProblemDetail> handleSelfDemotion(SelfDemotionException ex, HttpServletRequest request) {
         LOG.warn("Un administrador ha intentado desactivarse o quitarse el rol");
         return build(HttpStatus.CONFLICT, "Cambio no permitido sobre uno mismo", ex.getMessage(), request);
+    }
+
+    /**
+     * Cambio que dejaría la aplicación sin ningún administrador activo.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 409}
+     */
+    @ExceptionHandler(LastActiveAdminException.class)
+    public ResponseEntity<ProblemDetail> handleLastActiveAdmin(LastActiveAdminException ex,
+                                                               HttpServletRequest request) {
+        LOG.warn("Cambio rechazado: dejaría la aplicación sin administradores activos");
+        return build(HttpStatus.CONFLICT, "Sin administradores activos", ex.getMessage(), request);
+    }
+
+    /**
+     * Dos modificaciones simultáneas del mismo usuario: la que llega tarde se rechaza. Solo los
+     * usuarios llevan bloqueo optimista.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 409} genérica
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleOptimisticLocking(OptimisticLockingFailureException ex,
+                                                                 HttpServletRequest request) {
+        LOG.warn("Modificación simultánea rechazada ({})", ex.getClass().getSimpleName());
+        return build(HttpStatus.CONFLICT, "Modificación simultánea",
+                "El usuario se ha modificado a la vez; vuelve a intentarlo", request);
     }
 
     /**

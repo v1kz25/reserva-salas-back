@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,10 +25,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 /**
- * Endpoints de gestión de usuarios, solo para administradores; la restricción se aplica en
- * {@link com.reservasalas.config.SecurityConfig}.
+ * Endpoints de gestión de usuarios, solo para administradores. La restricción se aplica en
+ * {@link com.reservasalas.config.SecurityConfig} y, como defensa en profundidad, también aquí con
+ * seguridad por método.
  */
 @RestController
+@PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/api/usuarios")
 public class UserController {
 

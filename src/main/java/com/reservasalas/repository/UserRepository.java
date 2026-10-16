@@ -1,9 +1,13 @@
 package com.reservasalas.repository;
 
+import com.reservasalas.entity.Role;
 import com.reservasalas.entity.User;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -55,4 +59,25 @@ public interface UserRepository extends JpaRepository<User, Long> {
             from User u
             where u.id = :id""")
     Optional<UserSessionState> findSessionStateById(@Param("id") Long id);
+
+    /**
+     * Lista los usuarios activos con ese rol y bloquea sus filas hasta el final de la transacción,
+     * para serializar los cambios que podrían dejar la aplicación sin administradores activos.
+     *
+     * @param role rol buscado
+     * @return los usuarios activos con ese rol, vacía si no hay ninguno
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<User> findAllByRoleAndActiveTrueOrderByIdAsc(Role role);
+
+    /**
+     * Incrementa de forma atómica la versión de sesión del usuario, lo que cierra sus sesiones
+     * abiertas. Antes vuelca los cambios pendientes de la transacción.
+     *
+     * @param id identificador del usuario
+     * @return número de filas modificadas (1 si el usuario existe)
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("update User u set u.sessionVersion = u.sessionVersion + 1 where u.id = :id")
+    int incrementSessionVersion(@Param("id") Long id);
 }

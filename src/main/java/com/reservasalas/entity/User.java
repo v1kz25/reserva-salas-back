@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.util.Locale;
@@ -20,7 +21,13 @@ import java.util.Locale;
  *
  * <p>La versión de sesión ({@code SESSION_VERSION}) se incrementa cada vez que cambian el rol, el
  * estado o la contraseña. Cada sesión guarda la versión con la que se abrió, y una sesión cuya
- * versión ya no coincide se cierra en su siguiente petición.
+ * versión ya no coincide se cierra en su siguiente petición. Esa columna no la escribe Hibernate al
+ * modificar la entidad: se incrementa con una sentencia SQL atómica
+ * ({@code UserRepository#incrementSessionVersion}), para que dos cambios simultáneos no pierdan
+ * ningún incremento.
+ *
+ * <p>La columna {@code VERSION} es la del bloqueo optimista: dos modificaciones simultáneas del
+ * mismo usuario no se pisan, la segunda falla.
  */
 @Entity
 @Table(name = "USERS", uniqueConstraints = @UniqueConstraint(name = User.UNIQUE_EMAIL_CONSTRAINT, columnNames = "EMAIL"))
@@ -59,8 +66,12 @@ public class User {
     @Column(name = "CREATED_AT", nullable = false)
     private Instant createdAt;
 
-    @Column(name = "SESSION_VERSION", nullable = false)
+    @Column(name = "SESSION_VERSION", nullable = false, updatable = false)
     private long sessionVersion;
+
+    @Version
+    @Column(name = "VERSION", nullable = false)
+    private long version;
 
     protected User() {
         // Requerido por JPA
@@ -114,31 +125,40 @@ public class User {
     }
 
     /**
-     * Cambia el nombre, el rol y el estado. Si cambian el rol o el estado, se incrementa la versión
-     * de sesión para que se cierren las sesiones abiertas del usuario.
+     * Cambia el nombre, el rol y el estado. No toca la versión de sesión: si este método devuelve
+     * {@code true}, quien lo llama debe incrementarla en la base de datos para cerrar las sesiones
+     * abiertas del usuario.
      *
      * @param newName   nuevo nombre visible; se limpia con {@link #cleanName(String)}
      * @param newRole   nuevo rol
      * @param newActive {@code true} si el usuario queda activo
+     * @return {@code true} si han cambiado el rol o el estado
      */
-    public void update(String newName, Role newRole, boolean newActive) {
-        if (newRole != role || newActive != active) {
-            sessionVersion++;
-        }
+    public boolean update(String newName, Role newRole, boolean newActive) {
+        boolean sessionsMustClose = newRole != role || newActive != active;
         this.name = cleanName(newName);
         this.role = newRole;
         this.active = newActive;
+        return sessionsMustClose;
     }
 
     /**
-     * Sustituye el hash de la contraseña e incrementa la versión de sesión, de modo que se cierran
-     * las sesiones abiertas del usuario.
+     * Sustituye el hash de la contraseña. No toca la versión de sesión: quien lo llama debe
+     * incrementarla en la base de datos para cerrar las sesiones abiertas del usuario.
      *
      * @param newPasswordHash hash BCrypt de la nueva contraseña
      */
     public void changePasswordHash(String newPasswordHash) {
         this.passwordHash = newPasswordHash;
-        sessionVersion++;
+    }
+
+    /**
+     * Indica si es un administrador activo.
+     *
+     * @return {@code true} si tiene el rol {@link Role#ADMIN} y está activo
+     */
+    public boolean isActiveAdmin() {
+        return active && role == Role.ADMIN;
     }
 
     /**
@@ -205,7 +225,8 @@ public class User {
     }
 
     /**
-     * Versión de sesión actual: las sesiones abiertas con otra versión ya no son válidas.
+     * Versión de sesión con la que se cargó la entidad: las sesiones abiertas con otra versión ya no
+     * son válidas. No refleja los incrementos hechos en la base de datos después de cargarla.
      *
      * @return la versión de sesión
      */
