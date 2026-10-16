@@ -21,6 +21,9 @@ server:
         http-only: true
         same-site: strict
         secure: ${APP_COOKIE_SECURE:false}
+  # IP del cliente detrás de un proxy: «none» usa la de la conexión e ignora X-Forwarded-For.
+  # Poner «native» solo detrás de un proxy inverso de confianza. Se fija aquí para que no se active solo en plataformas cloud.
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:none}
   error:
     include-message: never
     include-stacktrace: never
@@ -32,6 +35,14 @@ app:
   timezone: ${APP_TIMEZONE:Europe/Madrid}
   # Marca las cookies JSESSIONID y XSRF-TOKEN como Secure (solo HTTPS). Activar en producción.
   cookie-secure: ${APP_COOKIE_SECURE:false}
+  # Límite de intentos de inicio de sesión por email e IP del cliente (en memoria de cada instancia).
+  login:
+    # Intentos fallidos permitidos dentro de la ventana; el siguiente responde 429.
+    max-attempts: ${LOGIN_MAX_INTENTOS:5}
+    # Duración de la ventana en minutos, contada desde el primer intento fallido.
+    window-minutes: ${LOGIN_VENTANA_MINUTOS:15}
+    # Combinaciones email e IP que se guardan como máximo (ver README: qué pasa al llenarse).
+    max-entries: ${LOGIN_MAX_ENTRADAS:10000}
   # Cuentas que se crean al arrancar si no existen. Los valores llegan siempre por variables de entorno.
   initial-users:
     admin:

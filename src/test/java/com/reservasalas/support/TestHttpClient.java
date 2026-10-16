@@ -120,6 +120,21 @@ public final class TestHttpClient {
      * @return la respuesta
      */
     public Reply send(String method, String path, String json, String csrfToken) {
+        return send(method, path, json, csrfToken, Map.of());
+    }
+
+    /**
+     * Petición con un token CSRF explícito y cabeceras adicionales.
+     *
+     * @param method       método HTTP
+     * @param path         ruta
+     * @param json         cuerpo JSON, o {@code null}
+     * @param csrfToken    valor de {@code X-XSRF-TOKEN}, o {@code null} para no enviarla
+     * @param extraHeaders cabeceras que se añaden a la petición
+     * @return la respuesta
+     */
+    public Reply send(String method, String path, String json, String csrfToken,
+                      Map<String, String> extraHeaders) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .method(method, json == null
                         ? HttpRequest.BodyPublishers.noBody()
@@ -130,6 +145,7 @@ public final class TestHttpClient {
         if (csrfToken != null) {
             builder.header("X-XSRF-TOKEN", csrfToken);
         }
+        extraHeaders.forEach(builder::header);
         if (!cookies.isEmpty()) {
             List<String> pairs = new ArrayList<>();
             cookies.forEach((k, v) -> pairs.add(k + "=" + v));

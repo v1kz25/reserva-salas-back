@@ -33,6 +33,10 @@ Variables de entorno (hay un ejemplo en [`.env.example`](.env.example)):
 |---|---|---|
 | `APP_TIMEZONE` | `Europe/Madrid` | Zona horaria inicial con la que se calculan «hoy» y «mañana». Solo se usa si no hay ninguna guardada (ver [Zona horaria](#zona-horaria)). Si no es válida, la aplicación no arranca. |
 | `APP_COOKIE_SECURE` | `false` | Marca las cookies `JSESSIONID` y `XSRF-TOKEN` como `Secure` (solo HTTPS). Ponlo a `true` en producción. |
+| `LOGIN_MAX_INTENTOS` | `5` | Intentos fallidos de inicio de sesión permitidos por email e IP dentro de la ventana (ver [Límite de intentos de inicio de sesión](#límite-de-intentos-de-inicio-de-sesión)). |
+| `LOGIN_VENTANA_MINUTOS` | `15` | Duración de la ventana en minutos, desde el primer intento fallido. |
+| `LOGIN_MAX_ENTRADAS` | `10000` | Combinaciones email e IP que se guardan como máximo en memoria. |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | `none` | Ponlo a `native` solo detrás de un proxy inverso de confianza, para tomar la IP del cliente de `X-Forwarded-For`. |
 | `ADMIN_EMAIL` | — | Email del administrador inicial. |
 | `ADMIN_PASSWORD` | — | Contraseña del administrador inicial (máximo 72 bytes). Si falta, no se crea y se avisa en el log. |
 | `ADMIN_NOMBRE` | `Administrador` | Nombre del administrador inicial. |
@@ -77,6 +81,21 @@ curl -s -b cookies.txt -c cookies.txt -H "X-XSRF-TOKEN: $XSRF" -X DELETE http://
 # 4. Cerrar sesión
 curl -s -b cookies.txt -c cookies.txt -H "X-XSRF-TOKEN: $XSRF" -X POST http://localhost:8080/api/auth/logout
 ```
+
+### Límite de intentos de inicio de sesión
+
+`POST /api/auth/login` cuenta los intentos por email (sin distinguir mayúsculas ni espacios en los extremos) e IP del cliente:
+
+- Tras `LOGIN_MAX_INTENTOS` intentos fallidos dentro de una ventana de `LOGIN_VENTANA_MINUTOS`, el login responde `429` con un `ProblemDetail` y la cabecera `Retry-After` (segundos que faltan, redondeados hacia arriba). El mensaje es el mismo exista o no el email.
+- La ventana es fija y empieza con el primer intento fallido de la serie: el bloqueo dura hasta que termina, y los intentos rechazados no lo alargan. Así nunca se comprueban más de `LOGIN_MAX_INTENTOS` contraseñas por ventana.
+- Mientras dura el bloqueo no se comprueban las credenciales, ni siquiera si son correctas.
+- Un inicio de sesión correcto reinicia el contador. Los `400` por cuerpo no válido no cuentan.
+- El contador está en memoria de cada instancia: se pierde al reiniciar y, con varias instancias, cada una cuenta por separado.
+- Guarda como máximo `LOGIN_MAX_ENTRADAS` combinaciones. Las caducadas se borran cada minuto. Si al llegar una combinación nueva el registro está lleno, se expulsa una caducada; si no hay, la no bloqueada más antigua; y si todas están bloqueadas, la nueva no se registra y ese intento se procesa sin contar. Así, llenar el registro con emails inventados no desbloquea a nadie.
+- Al bloquearse una serie se escribe un único aviso (`WARN`) en el log; cada petición rechazada después solo se registra en `DEBUG`. Ninguno incluye el email ni la IP.
+- Por diseño, la clave es la pareja email e IP: frena la fuerza bruta contra una cuenta desde un mismo origen, pero no el *password spraying* (muchas IPs contra un mismo email, o una IP probando pocas contraseñas contra muchos emails). Contra eso hacen falta otras medidas (límite por IP o por cuenta, CAPTCHA, un WAF en el proxy).
+
+La IP del cliente es la de la conexión (`getRemoteAddr()`); la cabecera `X-Forwarded-For` se ignora, porque cualquiera puede falsearla. `SERVER_FORWARD_HEADERS_STRATEGY` vale `none` por defecto, también en plataformas cloud donde Spring Boot lo activaría solo. Si la API está detrás de un proxy inverso de confianza, define `SERVER_FORWARD_HEADERS_STRATEGY=native`: Tomcat tomará la IP de `X-Forwarded-For` solo cuando la conexión venga de una IP de proxy interna (redes privadas y `localhost`; se puede ajustar con `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES`). Sin esa configuración, todos los clientes que lleguen por el proxy comparten su IP.
 
 ## Compilar y probar
 

@@ -298,6 +298,27 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Demasiados intentos fallidos de inicio de sesión. Cada rechazo se registra en {@code DEBUG}; el
+     * aviso único al bloquearse la serie lo escribe {@link com.reservasalas.service.LoginAttemptService}.
+     * Ninguno de los dos incluye el email ni la IP.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 429} con la cabecera {@code Retry-After} en segundos
+     */
+    @ExceptionHandler(TooManyLoginAttemptsException.class)
+    public ResponseEntity<ProblemDetail> handleTooManyLoginAttempts(TooManyLoginAttemptsException ex,
+                                                                    HttpServletRequest request) {
+        LOG.debug("Inicio de sesión rechazado por demasiados intentos fallidos; reintento en {} s",
+                ex.getRetryAfterSeconds());
+        ProblemDetail problem = problem(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos", ex.getMessage(),
+                request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(ex.getRetryAfterSeconds()))
+                .body(problem);
+    }
+
+    /**
      * Petición sin sesión (o con la sesión caducada) a un recurso que la exige. Llega desde el filtro
      * de seguridad a través de su punto de entrada.
      *
