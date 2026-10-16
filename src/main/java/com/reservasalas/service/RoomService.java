@@ -1,5 +1,6 @@
 package com.reservasalas.service;
 
+import com.reservasalas.config.CurrentTimeZone;
 import com.reservasalas.dto.RoomDto;
 import com.reservasalas.dto.RoomRequest;
 import com.reservasalas.entity.Room;
@@ -9,8 +10,6 @@ import com.reservasalas.exception.RoomNotFoundException;
 import com.reservasalas.repository.ReservationRepository;
 import com.reservasalas.repository.RoomRepository;
 import java.sql.SQLException;
-import java.time.Clock;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import org.hibernate.exception.ConstraintViolationException;
@@ -33,19 +32,19 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final ReservationRepository reservationRepository;
-    private final Clock clock;
+    private final CurrentTimeZone currentTimeZone;
 
     /**
      * Crea el servicio.
      *
      * @param roomRepository        repositorio de salas
      * @param reservationRepository repositorio de reservas
-     * @param clock                 reloj con el que se decide qué día es hoy
+     * @param currentTimeZone       zona horaria vigente, con la que se decide qué día es hoy
      */
-    public RoomService(RoomRepository roomRepository, ReservationRepository reservationRepository, Clock clock) {
+    public RoomService(RoomRepository roomRepository, ReservationRepository reservationRepository, CurrentTimeZone currentTimeZone) {
         this.roomRepository = roomRepository;
         this.reservationRepository = reservationRepository;
-        this.clock = clock;
+        this.currentTimeZone = currentTimeZone;
     }
 
     /**
@@ -138,7 +137,7 @@ public class RoomService {
     public void delete(Long id) {
         roomRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new RoomNotFoundException(id));
-        if (reservationRepository.existsByRoomFrom(id, LocalDate.now(clock))) {
+        if (reservationRepository.existsByRoomFrom(id, currentTimeZone.today())) {
             throw new RoomHasFutureReservationsException(id);
         }
         int pastReservations = reservationRepository.deleteByRoomId(id);

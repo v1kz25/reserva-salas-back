@@ -1,5 +1,6 @@
 package com.reservasalas.service;
 
+import com.reservasalas.config.CurrentTimeZone;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -40,7 +41,7 @@ class RoomServiceTest {
         reservations = mock(ReservationRepository.class);
         // 2026-10-01 23:30 UTC ya es 2026-10-02 en Madrid.
         Clock clock = Clock.fixed(Instant.parse("2026-10-01T23:30:00Z"), ZoneId.of("Europe/Madrid"));
-        service = new RoomService(rooms, reservations, clock);
+        service = new RoomService(rooms, reservations, new CurrentTimeZone(clock));
     }
 
     private static DataIntegrityViolationException violation(String constraint) {

@@ -1,5 +1,6 @@
 package com.reservasalas.service;
 
+import com.reservasalas.config.CurrentTimeZone;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -63,7 +64,7 @@ class ReservationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ReservationService(reservationRepository, roomRepository, userRepository, CLOCK);
+        service = new ReservationService(reservationRepository, roomRepository, userRepository, new CurrentTimeZone(CLOCK));
         room = new Room("Sala A", 8, 1);
         ana = new User("ana@example.com", "Ana", "hash", Role.USER);
         ReflectionTestUtils.setField(ana, "id", TestUsers.ANA.getId());
