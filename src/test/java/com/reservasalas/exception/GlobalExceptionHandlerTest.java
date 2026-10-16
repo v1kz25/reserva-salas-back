@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.reservasalas.config.SecurityConfig;
 import com.reservasalas.controller.ReservationController;
 import com.reservasalas.controller.RoomController;
+import com.reservasalas.repository.UserRepository;
 import com.reservasalas.service.ReservationService;
 import com.reservasalas.service.RoomService;
 import com.reservasalas.support.TestUsers;
@@ -47,8 +48,12 @@ class GlobalExceptionHandlerTest {
     @MockitoBean
     private ReservationService reservationService;
 
+    @MockitoBean
+    private UserRepository userRepository;
+
     @BeforeEach
     void setUp() {
+        TestUsers.acceptAllSessions(userRepository);
         // Administrador: los métodos de escritura sobre salas exigen ese rol antes de llegar al 405.
         mvc = TestUsers.mockMvcAs(context, TestUsers.ADMIN);
     }

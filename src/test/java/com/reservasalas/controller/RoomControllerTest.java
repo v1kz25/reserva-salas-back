@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.reservasalas.config.SecurityConfig;
+import com.reservasalas.repository.UserRepository;
 import com.reservasalas.support.TestUsers;
 import com.reservasalas.dto.RoomDto;
 import com.reservasalas.service.RoomService;
@@ -31,8 +32,12 @@ class RoomControllerTest {
     @MockitoBean
     private RoomService service;
 
+    @MockitoBean
+    private UserRepository userRepository;
+
     @BeforeEach
     void setUp() {
+        TestUsers.acceptAllSessions(userRepository);
         mvc = TestUsers.mockMvcAs(context, TestUsers.ANA);
     }
 

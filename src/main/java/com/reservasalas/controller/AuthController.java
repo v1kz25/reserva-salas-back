@@ -111,7 +111,12 @@ public class AuthController {
     }
 
     /**
-     * Obtiene el usuario de la sesión.
+     * Obtiene el usuario de la sesión, con los datos guardados en ella al iniciar sesión. No hace
+     * falta leerlos de nuevo de la base de datos: si cambian el rol o el estado del usuario, su
+     * sesión se cierra en la siguiente petición (ver
+     * {@link com.reservasalas.security.SessionValidationFilter}), y si un administrador cambia su
+     * propio nombre se actualiza su sesión. El cambio de nombre de otro usuario se ve en su
+     * siguiente inicio de sesión.
      *
      * @param user usuario autenticado
      * @return el usuario

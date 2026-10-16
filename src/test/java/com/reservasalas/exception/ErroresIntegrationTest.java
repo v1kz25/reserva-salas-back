@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.reservasalas.entity.Role;
+import com.reservasalas.repository.UserRepository;
 import com.reservasalas.support.TestUsers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,12 +42,15 @@ class ErroresIntegrationTest {
     @Autowired
     private WebApplicationContext context;
 
+    @Autowired
+    private UserRepository users;
+
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         // Administrador: los métodos de escritura sobre salas exigen ese rol antes de llegar al 405/404.
-        mvc = TestUsers.mockMvcAs(context, TestUsers.ADMIN);
+        mvc = TestUsers.mockMvcAs(context, TestUsers.persisted(users, Role.ADMIN));
     }
 
     @ParameterizedTest

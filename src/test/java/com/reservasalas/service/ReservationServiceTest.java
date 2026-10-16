@@ -66,7 +66,7 @@ class ReservationServiceTest {
     void setUp() {
         service = new ReservationService(reservationRepository, roomRepository, userRepository, new CurrentTimeZone(CLOCK));
         room = new Room("Sala A", 8, 1);
-        ana = new User("ana@example.com", "Ana", "hash", Role.USER);
+        ana = new User("ana@example.com", "Ana", "hash", Role.USER, Instant.EPOCH);
         ReflectionTestUtils.setField(ana, "id", TestUsers.ANA.getId());
     }
 
@@ -235,7 +235,7 @@ class ReservationServiceTest {
 
     @Test
     void cancelDeReservaAjenaSinSerAdminLanzaForbiddenYNoBorra() {
-        User otro = new User("otro@example.com", "Otro", "hash", Role.USER);
+        User otro = new User("otro@example.com", "Otro", "hash", Role.USER, Instant.EPOCH);
         ReflectionTestUtils.setField(otro, "id", 99L);
         when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservationOf(otro)));
 

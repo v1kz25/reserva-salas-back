@@ -80,8 +80,8 @@ class GestionSalasIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        admin = TestUsers.mockMvcAs(context, TestUsers.ADMIN);
-        asUser = TestUsers.mockMvcAs(context, TestUsers.ANA);
+        admin = TestUsers.mockMvcAs(context, TestUsers.persisted(users, Role.ADMIN));
+        asUser = TestUsers.mockMvcAs(context, TestUsers.persisted(users, Role.USER));
         anonymous = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
@@ -102,7 +102,7 @@ class GestionSalasIntegrationTest {
     }
 
     private void reserve(Room room, LocalDate date) {
-        User owner = users.save(new User("u-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER));
+        User owner = users.save(new User("u-" + UUID.randomUUID() + "@example.com", "Ana", "hash", Role.USER, Instant.EPOCH));
         reservations.save(new Reservation(room, date, LocalTime.of(10, 0), LocalTime.of(11, 0), owner, "Motivo"));
     }
 
@@ -408,7 +408,7 @@ class GestionSalasIntegrationTest {
     void adminSinTokenCsrfDa403() throws Exception {
         MockMvc withoutToken = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         Room room = newRoom(unique("Csrf"));
-        withoutToken.perform(delete("/api/salas/" + room.getId()).with(user(TestUsers.ADMIN)))
+        withoutToken.perform(delete("/api/salas/" + room.getId()).with(user(TestUsers.persisted(users, Role.ADMIN))))
                 .andExpect(status().isForbidden());
         assertThat(rooms.existsById(room.getId())).isTrue();
     }
