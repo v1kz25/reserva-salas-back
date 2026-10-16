@@ -96,7 +96,7 @@ class PaginacionReservasIntegrationTest {
         people = new ArrayList<>();
         for (int i = 0; i < 25; i++) {
             people.add(users.save(new User("pag-" + UUID.randomUUID() + "@example.com", "Persona " + i,
-                    "$2a$10$abcdefghijklmnopqrstuuJ1lRkXH8aY0Y8cU5qOjK8m7cOQ1gYfS", Role.USER)));
+                    "$2a$10$abcdefghijklmnopqrstuuJ1lRkXH8aY0Y8cU5qOjK8m7cOQ1gYfS", Role.USER, Instant.EPOCH)));
         }
         mvc = TestUsers.mockMvcAs(context, AuthenticatedUser.from(people.get(0)));
         roomA = rooms.save(new Room("Pag A " + UUID.randomUUID(), 8, 1));
