@@ -9,18 +9,16 @@ import com.reservasalas.exception.FriendRequestNotFoundException;
 import com.reservasalas.exception.FriendshipConflictException;
 import com.reservasalas.exception.FriendshipNotFoundException;
 import com.reservasalas.exception.SelfFriendRequestException;
+import com.reservasalas.exception.UniqueConstraintViolations;
 import com.reservasalas.exception.UserNotFoundException;
 import com.reservasalas.repository.FriendRequestRepository;
 import com.reservasalas.repository.UserRepository;
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Predicate;
-import org.hibernate.exception.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -43,9 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class FriendshipService {
 
     private static final Logger LOG = LoggerFactory.getLogger(FriendshipService.class);
-    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
-    private static final String UNIQUE_PAIR_CONSTRAINT =
-            FriendRequest.UNIQUE_PAIR_CONSTRAINT.toLowerCase(Locale.ROOT);
 
     private final FriendRequestRepository friendRequestRepository;
     private final UserRepository userRepository;
@@ -243,34 +238,10 @@ public class FriendshipService {
      * cual para que acabe como error interno.
      */
     private static RuntimeException translateIntegrityViolation(DataIntegrityViolationException e) {
-        if (violatesUniquePair(e)) {
+        if (UniqueConstraintViolations.isViolation(e, FriendRequest.UNIQUE_PAIR_CONSTRAINT)) {
             LOG.warn("Solicitud de amistad repetida detectada por la base de datos");
             return FriendshipConflictException.alreadyRelated();
         }
         return e;
-    }
-
-    /**
-     * Decide si la violación de integridad se debe a la restricción única del par de usuarios. Si
-     * alguna causa informa del nombre de la restricción, manda ese nombre; si no, basta con que la
-     * base de datos indique una violación de unicidad (SQLSTATE {@code 23505}), porque la única
-     * restricción única de las solicitudes, aparte de la clave primaria generada, es la del par.
-     */
-    private static boolean violatesUniquePair(Throwable error) {
-        String constraintName = null;
-        boolean uniqueViolation = false;
-        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
-            if (cause instanceof ConstraintViolationException violation && violation.getConstraintName() != null) {
-                constraintName = violation.getConstraintName();
-            }
-            if (cause instanceof SQLException sqlException
-                    && UNIQUE_VIOLATION_SQL_STATE.equals(sqlException.getSQLState())) {
-                uniqueViolation = true;
-            }
-        }
-        if (constraintName != null) {
-            return constraintName.toLowerCase(Locale.ROOT).contains(UNIQUE_PAIR_CONSTRAINT);
-        }
-        return uniqueViolation;
     }
 }
