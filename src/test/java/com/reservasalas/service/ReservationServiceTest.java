@@ -39,6 +39,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -171,7 +174,7 @@ class ReservationServiceTest {
 
     @Test
     void findConRangoInvertidoLanzaErrorEnFechaHastaSinConsultar() {
-        assertThatThrownBy(() -> service.find(null, TODAY.plusDays(5), TODAY.plusDays(4)))
+        assertThatThrownBy(() -> service.find(null, TODAY.plusDays(5), TODAY.plusDays(4), 0, 20))
                 .isInstanceOfSatisfying(InvalidDateRangeException.class,
                         e -> assertThat(e.getField()).isEqualTo("fechaHasta"));
         verifyNoInteractions(reservationRepository);
@@ -179,23 +182,23 @@ class ReservationServiceTest {
 
     @Test
     void findAceptaMismaFechaEnAmbasPuntasYSoloUnaDeEllas() {
-        when(reservationRepository.findAll(any(Specification.class), any(Sort.class))).thenReturn(List.of());
+        when(reservationRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        assertThat(service.find(null, TODAY, TODAY)).isEmpty();
-        assertThat(service.find(null, TODAY, null)).isEmpty();
-        assertThat(service.find(null, null, TODAY)).isEmpty();
-        assertThat(service.find(1L, TODAY, TODAY.plusDays(1))).isEmpty();
-        verify(reservationRepository, times(4)).findAll(any(Specification.class), any(Sort.class));
+        assertThat(service.find(null, TODAY, TODAY, 0, 20).content()).isEmpty();
+        assertThat(service.find(null, TODAY, null, 0, 20).content()).isEmpty();
+        assertThat(service.find(null, null, TODAY, 0, 20).content()).isEmpty();
+        assertThat(service.find(1L, TODAY, TODAY.plusDays(1), 0, 20).content()).isEmpty();
+        verify(reservationRepository, times(4)).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test
-    void findOrdenaPorFechaYHoraInicio() {
-        when(reservationRepository.findAll(any(Specification.class), eq(Sort.by("date", "startTime"))))
-                .thenReturn(List.of());
+    void findOrdenaPorFechaYHoraInicioConDesempatePorId() {
+        Pageable expected = PageRequest.of(0, 20, Sort.by("date", "startTime", "id"));
+        when(reservationRepository.findAll(any(Specification.class), eq(expected))).thenReturn(Page.empty(expected));
 
-        service.find(null, null, null);
+        service.find(null, null, null, 0, 20);
 
-        verify(reservationRepository).findAll(any(Specification.class), eq(Sort.by("date", "startTime")));
+        verify(reservationRepository).findAll(any(Specification.class), eq(expected));
     }
 
     @Test

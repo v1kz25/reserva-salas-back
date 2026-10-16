@@ -2,6 +2,7 @@ package com.reservasalas.service;
 
 import com.reservasalas.config.CurrentTimeZone;
 import com.reservasalas.dto.CreateReservationRequest;
+import com.reservasalas.dto.PageDto;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.entity.Reservation;
 import com.reservasalas.entity.Room;
@@ -21,6 +22,8 @@ import java.time.LocalDate;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -34,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReservationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ReservationService.class);
-    private static final Sort BY_DATE_AND_START_TIME = Sort.by("date", "startTime");
+    private static final Sort BY_DATE_AND_START_TIME = Sort.by("date", "startTime", "id");
 
     private final ReservationRepository reservationRepository;
     private final RoomRepository roomRepository;
@@ -60,16 +63,21 @@ public class ReservationService {
     }
 
     /**
-     * Lista las reservas ordenadas por fecha y hora de inicio, con filtros opcionales.
+     * Lista una página de las reservas ordenadas por fecha y hora de inicio (y por id, para que el
+     * orden sea estable entre páginas), con filtros opcionales.
      *
      * @param roomId identificador de la sala; si es nulo, no filtra por sala
      * @param from   primer día incluido; si es nulo, no hay límite inferior
      * @param to     último día incluido; si es nulo, no hay límite superior
-     * @return las reservas que cumplen los filtros, vacía si no hay ninguna
+     * @param page   número de página, empezando en 0
+     * @param size   tamaño de página
+     * @return la página de reservas que cumplen los filtros; si la página está fuera de rango, su
+     *         contenido está vacío pero los totales son correctos. Si el desplazamiento no cabe en un
+     *         {@code int} (página enorme), solo se cuentan las reservas, sin consultar el contenido
      * @throws InvalidDateRangeException si se indican ambos días y {@code to} es anterior a {@code from}
      */
     @Transactional(readOnly = true)
-    public List<ReservationDto> find(Long roomId, LocalDate from, LocalDate to) {
+    public PageDto<ReservationDto> find(Long roomId, LocalDate from, LocalDate to, int page, int size) {
         if (from != null && to != null && to.isBefore(from)) {
             throw new InvalidDateRangeException("fechaHasta", "no puede ser anterior a fechaDesde");
         }
@@ -77,9 +85,12 @@ public class ReservationService {
                 ReservationSpecifications.hasRoom(roomId),
                 ReservationSpecifications.onOrAfter(from),
                 ReservationSpecifications.onOrBefore(to));
-        return reservationRepository.findAll(filter, BY_DATE_AND_START_TIME).stream()
-                .map(ReservationDto::from)
-                .toList();
+        var pageable = PageRequest.of(page, size, BY_DATE_AND_START_TIME);
+        if (pageable.getOffset() > Integer.MAX_VALUE) {
+            return PageDto.from(new PageImpl<Reservation>(List.of(), pageable, reservationRepository.count(filter)),
+                    ReservationDto::from);
+        }
+        return PageDto.from(reservationRepository.findAll(filter, pageable), ReservationDto::from);
     }
 
     /**
