@@ -89,6 +89,7 @@ class PaginacionReservasIntegrationTest {
     private Room roomB;
     private Room roomC;
     private List<User> people;
+    private boolean viewerIsAdmin;
 
     @BeforeEach
     void setUp() {
@@ -358,10 +359,18 @@ class PaginacionReservasIntegrationTest {
         assertThat(node.has("empty")).isFalse();
         assertThat(node.has("numberOfElements")).isFalse();
 
+        // La primera reserva es del usuario de la sesión: completa, sin invitaciones en el listado
         List<String> itemKeys = new ArrayList<>();
         node.get("content").get(0).propertyNames().forEach(itemKeys::add);
         assertThat(itemKeys).containsExactlyInAnyOrder(
-                "id", "salaId", "fecha", "horaInicio", "horaFin", "usuarioId", "responsable", "motivo");
+                "id", "salaId", "fecha", "horaInicio", "horaFin", "usuarioId", "responsable", "motivo", "detalle");
+        assertThat(node.get("content").get(0).get("detalle").asText()).isEqualTo("COMPLETO");
+
+        // La segunda es de otro usuario: solo la franja ocupada
+        List<String> busyKeys = new ArrayList<>();
+        node.get("content").get(1).propertyNames().forEach(busyKeys::add);
+        assertThat(busyKeys).containsExactlyInAnyOrder("id", "salaId", "fecha", "horaInicio", "horaFin", "detalle");
+        assertThat(node.get("content").get(1).get("detalle").asText()).isEqualTo("OCUPADA");
     }
 
     // ---- N+1 ----
@@ -387,13 +396,29 @@ class PaginacionReservasIntegrationTest {
         JsonNode node = json("?size=" + reservas);
         assertThat(node.get("content")).hasSize(reservas);
         Set<Long> usuarios = new HashSet<>();
-        node.get("content").forEach(r -> usuarios.add(r.get("usuarioId").asLong()));
-        assertThat(usuarios).hasSize(reservas);
+        node.get("content").forEach(r -> {
+            if (r.has("usuarioId")) {
+                usuarios.add(r.get("usuarioId").asLong());
+            }
+        });
+        // Como USER solo ve completa la suya; como ADMIN, todas
+        assertThat(usuarios).hasSize(viewerIsAdmin ? reservas : 1);
         return stats.getPrepareStatementCount();
     }
 
     @Test
     void elNumeroDeSentenciasNoCreceConElNumeroDeReservasNiDeUsuarios() throws Exception {
+        long con5 = sentencias(5);
+        long con20 = sentencias(20);
+        assertThat(con20).isEqualTo(con5);
+    }
+
+    @Test
+    void elNumeroDeSentenciasNoCreceConElNumeroDeReservasParaUnAdmin() throws Exception {
+        User admin = users.save(new User("pag-" + UUID.randomUUID() + "@example.com", "Admin",
+                "$2a$10$abcdefghijklmnopqrstuuJ1lRkXH8aY0Y8cU5qOjK8m7cOQ1gYfS", Role.ADMIN, Instant.EPOCH));
+        mvc = TestUsers.mockMvcAs(context, AuthenticatedUser.from(admin));
+        viewerIsAdmin = true;
         long con5 = sentencias(5);
         long con20 = sentencias(20);
         assertThat(con20).isEqualTo(con5);

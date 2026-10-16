@@ -1,7 +1,9 @@
 package com.reservasalas.controller;
 
 import com.reservasalas.dto.CreateReservationRequest;
+import com.reservasalas.dto.MyReservationRole;
 import com.reservasalas.dto.PageDto;
+import com.reservasalas.dto.ReservationFilter;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.security.AuthenticatedUser;
 import com.reservasalas.service.ReservationService;
@@ -41,17 +43,25 @@ public class ReservationController {
     }
 
     /**
-     * Lista una página de las reservas, ordenadas por fecha y hora de inicio.
+     * Lista una página de las reservas, ordenadas por fecha y hora de inicio. Las reservas en las que
+     * el usuario no participa salen solo como franja ocupada.
      *
-     * @param roomId filtro opcional por sala
-     * @param from   filtro opcional: primer día incluido
-     * @param to     filtro opcional: último día incluido
-     * @param page   número de página, empezando en 0
-     * @param size   tamaño de página, de 1 a {@value PageDto#MAX_SIZE}
+     * @param mine        si es {@code true}, solo «Mis reservas»: las que organiza el usuario y
+     *                    aquellas en las que tiene una invitación pendiente o aceptada
+     * @param role        con {@code mine}, papel opcional: {@code ORGANIZADA}, {@code INVITADO} o
+     *                    {@code PENDIENTE}; sin {@code mine} se ignora
+     * @param roomId      filtro opcional por sala
+     * @param from        filtro opcional: primer día incluido
+     * @param to          filtro opcional: último día incluido
+     * @param page        número de página, empezando en 0
+     * @param size        tamaño de página, de 1 a {@value PageDto#MAX_SIZE}
+     * @param currentUser usuario de la sesión
      * @return la página de reservas que cumplen los filtros
      */
     @GetMapping
     public ResponseEntity<PageDto<ReservationDto>> find(
+            @RequestParam(name = "mis", defaultValue = "false") boolean mine,
+            @RequestParam(name = "rol", required = false) String role,
             @RequestParam(name = "salaId", required = false) Long roomId,
             @RequestParam(name = "fechaDesde", required = false) LocalDate from,
             @RequestParam(name = "fechaHasta", required = false) LocalDate to,
@@ -59,19 +69,25 @@ public class ReservationController {
             @Min(value = 0, message = "debe ser al menos 0") int page,
             @RequestParam(name = "size", defaultValue = PageDto.DEFAULT_SIZE)
             @Min(value = 1, message = "debe ser al menos 1")
-            @Max(value = PageDto.MAX_SIZE, message = "no puede ser mayor que " + PageDto.MAX_SIZE) int size) {
-        return ResponseEntity.ok(reservationService.find(roomId, from, to, page, size));
+            @Max(value = PageDto.MAX_SIZE, message = "no puede ser mayor que " + PageDto.MAX_SIZE) int size,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        MyReservationRole parsedRole = mine ? MyReservationRole.fromApiValue(role) : null;
+        var filter = new ReservationFilter(roomId, from, to, mine, parsedRole);
+        return ResponseEntity.ok(reservationService.find(filter, page, size, currentUser));
     }
 
     /**
-     * Obtiene una reserva.
+     * Obtiene una reserva: completa y con sus invitaciones si el usuario participa en ella o es
+     * administrador; si no, solo la franja ocupada.
      *
-     * @param id identificador de la reserva
+     * @param id          identificador de la reserva
+     * @param currentUser usuario de la sesión
      * @return la reserva
      */
     @GetMapping("/{id}")
-    public ResponseEntity<ReservationDto> findById(@PathVariable Long id) {
-        return ResponseEntity.ok(reservationService.findById(id));
+    public ResponseEntity<ReservationDto> findById(@PathVariable Long id,
+                                                   @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        return ResponseEntity.ok(reservationService.findById(id, currentUser));
     }
 
     /**

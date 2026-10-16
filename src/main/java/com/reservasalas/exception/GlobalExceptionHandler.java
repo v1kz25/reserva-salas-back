@@ -232,6 +232,36 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Invitación inexistente, de otra reserva o de otro usuario.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 404}
+     */
+    @ExceptionHandler(InvitationNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleInvitationNotFound(InvitationNotFoundException ex,
+                                                                  HttpServletRequest request) {
+        LOG.warn("Invitación no encontrada: {}", ex.getMessage());
+        return build(HttpStatus.NOT_FOUND, "Invitación no encontrada", ex.getMessage(), request);
+    }
+
+    /**
+     * Invitación que no se puede crear, aceptar o rechazar: el invitado no es amigo, ya está
+     * invitado, se supera el aforo, la reserva ya ha pasado o la invitación no está en el estado
+     * adecuado.
+     *
+     * @param ex      excepción capturada
+     * @param request petición en curso
+     * @return respuesta {@code 409}
+     */
+    @ExceptionHandler(InvitationConflictException.class)
+    public ResponseEntity<ProblemDetail> handleInvitationConflict(InvitationConflictException ex,
+                                                                  HttpServletRequest request) {
+        LOG.warn("Invitación en conflicto: {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, "Invitación no válida", ex.getMessage(), request);
+    }
+
+    /**
      * Cambio que dejaría la aplicación sin ningún administrador activo.
      *
      * @param ex      excepción capturada
