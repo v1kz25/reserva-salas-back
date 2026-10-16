@@ -70,7 +70,8 @@ public class AuthController {
 
     /**
      * Inicia sesión. Si ya había sesión, se cambia su identificador (protección frente a fijación de
-     * sesión) y se emite un token CSRF nuevo.
+     * sesión) y se emite un token CSRF nuevo. Los intentos se limitan por email e IP del cliente
+     * ({@link HttpServletRequest#getRemoteAddr()}); los cuerpos no válidos no cuentan.
      *
      * @param login    credenciales
      * @param request  petición en curso
@@ -81,7 +82,8 @@ public class AuthController {
     public ResponseEntity<UserDto> login(@Valid @RequestBody LoginRequest login,
                                          HttpServletRequest request,
                                          HttpServletResponse response) {
-        Authentication authentication = authService.authenticate(login.email(), login.password());
+        Authentication authentication = authService.authenticate(
+                login.email(), login.password(), request.getRemoteAddr());
 
         sessionFixationProtection.onAuthentication(authentication, request, response);
         SecurityContext context = contextHolderStrategy.createEmptyContext();

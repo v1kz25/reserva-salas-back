@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -15,6 +16,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * <p>Solo se activa con el perfil {@code dev}; en el resto de entornos no se permite ningún origen
  * cruzado. La aplica el filtro CORS de Spring Security, antes de exigir sesión, para que las
  * peticiones de comprobación previa ({@code OPTIONS}) no respondan {@code 401}.
+ *
+ * <p>Expone la cabecera {@code Retry-After} del {@code 429} del login, que no está entre las que el
+ * navegador deja leer por defecto en una respuesta de otro origen.
  */
 @Configuration
 @Profile("dev")
@@ -42,6 +46,7 @@ public class CorsDevConfig {
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
+        config.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
