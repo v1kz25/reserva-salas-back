@@ -31,7 +31,7 @@ Variables de entorno (hay un ejemplo en [`.env.example`](.env.example)):
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `APP_TIMEZONE` | `Europe/Madrid` | Zona horaria (identificador IANA) con la que se calculan «hoy» y «mañana» para validar las fechas de las reservas. Si no es válida, la aplicación no arranca. |
+| `APP_TIMEZONE` | `Europe/Madrid` | Zona horaria inicial con la que se calculan «hoy» y «mañana». Solo se usa si no hay ninguna guardada (ver [Zona horaria](#zona-horaria)). Si no es válida, la aplicación no arranca. |
 | `APP_COOKIE_SECURE` | `false` | Marca las cookies `JSESSIONID` y `XSRF-TOKEN` como `Secure` (solo HTTPS). Ponlo a `true` en producción. |
 | `ADMIN_EMAIL` | — | Email del administrador inicial. |
 | `ADMIN_PASSWORD` | — | Contraseña del administrador inicial (máximo 72 bytes). Si falta, no se crea y se avisa en el log. |
@@ -40,6 +40,19 @@ Variables de entorno (hay un ejemplo en [`.env.example`](.env.example)):
 | `DEMO_NOMBRE` | `Usuario de prueba` | Nombre del usuario de prueba. |
 
 Las cuentas iniciales solo se crean si no existe ya un usuario con ese email; si existe, no se modifica. La base de datos es en memoria, así que se crean en cada arranque.
+
+## Zona horaria
+
+«Hoy» y «mañana» (reservas solo a partir de mañana, salas con reservas futuras) se calculan con la zona horaria vigente:
+
+- `GET /api/config/zona-horaria`: devuelve la zona vigente, p. ej. `{"zonaHoraria":"Europe/Madrid"}`. Para cualquier usuario autenticado.
+- `PUT /api/config/zona-horaria` con el mismo cuerpo: la cambia. Solo `ADMIN` (`403` si no). Se aplica en caliente y se guarda en la tabla `APP_SETTINGS`. Responde `400` si el valor falta, está vacío o no es válido.
+
+`APP_TIMEZONE` es solo la zona inicial: si hay una zona guardada en `APP_SETTINGS`, manda la guardada.
+
+Solo se admiten identificadores IANA de la forma Región/Ciudad (`Europe/Madrid`, `America/New_York`...) y `UTC`, distinguiendo mayúsculas. No se admiten desfases fijos (`+02:00`, `UTC+2`, `Etc/GMT+1`...) porque no siguen el horario de verano: en el `PUT` dan `400` y en `APP_TIMEZONE` hacen fallar el arranque.
+
+Con varias instancias, cada una mantiene la zona en memoria: un cambio solo se aplica en la instancia que lo recibe, y las demás lo toman al reiniciarse.
 
 ## Autenticación
 

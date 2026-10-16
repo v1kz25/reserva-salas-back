@@ -28,13 +28,15 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  * autorización por rol.
  *
  * <p>Todo {@code /api/**} exige sesión salvo {@code GET /api/auth/csrf} y
- * {@code POST /api/auth/login}. Crear, modificar y eliminar salas es solo para administradores. El
+ * {@code POST /api/auth/login}. Crear, modificar y eliminar salas y cambiar la zona horaria es solo
+ * para administradores. El
  * resto de rutas (fuera de la API) no requieren sesión y acaban en el {@code 404} genérico.
  */
 @Configuration
 public class SecurityConfig {
 
     private static final String ROOMS = "/api/salas/**";
+    private static final String TIME_ZONE = "/api/config/zona-horaria";
     private static final String SAME_SITE_STRICT = "Strict";
 
     /**
@@ -75,6 +77,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, ROOMS).hasAuthority(Role.ADMIN.authority())
                         .requestMatchers(HttpMethod.PUT, ROOMS).hasAuthority(Role.ADMIN.authority())
                         .requestMatchers(HttpMethod.DELETE, ROOMS).hasAuthority(Role.ADMIN.authority())
+                        .requestMatchers(HttpMethod.PUT, TIME_ZONE).hasAuthority(Role.ADMIN.authority())
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll());
 

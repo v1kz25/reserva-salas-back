@@ -1,5 +1,6 @@
 package com.reservasalas.service;
 
+import com.reservasalas.config.CurrentTimeZone;
 import com.reservasalas.dto.CreateReservationRequest;
 import com.reservasalas.dto.ReservationDto;
 import com.reservasalas.entity.Reservation;
@@ -16,7 +17,6 @@ import com.reservasalas.repository.ReservationSpecifications;
 import com.reservasalas.repository.RoomRepository;
 import com.reservasalas.repository.UserRepository;
 import com.reservasalas.security.AuthenticatedUser;
-import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import org.slf4j.Logger;
@@ -39,7 +39,7 @@ public class ReservationService {
     private final ReservationRepository reservationRepository;
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
-    private final Clock clock;
+    private final CurrentTimeZone currentTimeZone;
 
     /**
      * Crea el servicio.
@@ -47,16 +47,16 @@ public class ReservationService {
      * @param reservationRepository repositorio de reservas
      * @param roomRepository        repositorio de salas
      * @param userRepository        repositorio de usuarios
-     * @param clock                 reloj con el que se decide qué día es hoy
+     * @param currentTimeZone       zona horaria vigente, con la que se decide qué día es hoy
      */
     public ReservationService(ReservationRepository reservationRepository,
                               RoomRepository roomRepository,
                               UserRepository userRepository,
-                              Clock clock) {
+                              CurrentTimeZone currentTimeZone) {
         this.reservationRepository = reservationRepository;
         this.roomRepository = roomRepository;
         this.userRepository = userRepository;
-        this.clock = clock;
+        this.currentTimeZone = currentTimeZone;
     }
 
     /**
@@ -160,7 +160,7 @@ public class ReservationService {
         if (!request.endTime().isAfter(request.startTime())) {
             throw new InvalidReservationException("horaFin", "debe ser posterior a horaInicio");
         }
-        if (!request.date().isAfter(LocalDate.now(clock))) {
+        if (!request.date().isAfter(currentTimeZone.today())) {
             throw new InvalidReservationException("fecha", "debe ser posterior a hoy");
         }
     }
