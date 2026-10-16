@@ -153,8 +153,9 @@ class GestionUsuariosConcurrenciaIntegrationTest {
                     () -> clientA.send("PUT", "/api/usuarios/" + b.getId(), change("Beta", "USER", true)),
                     () -> clientB.send("PUT", "/api/usuarios/" + a.getId(), change("Alfa", "USER", true))));
 
+            // 401 si la sesión del perdedor ya se había cerrado al quitarle el rol
             assertThat(replies).as("ronda %d", round).extracting(Reply::status)
-                    .allMatch(s -> s == 200 || s == 409)
+                    .allMatch(s -> s == 200 || s == 409 || s == 401)
                     .contains(200);
             // solo uno puede ganar: el otro cambio dejaría la aplicación sin administradores
             assertThat(activeAdmins()).as("administradores activos en la ronda %d", round).isEqualTo(1);
